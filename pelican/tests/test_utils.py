@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import locale
 import logging
 import os
@@ -12,6 +10,7 @@ import pytz
 
 from pelican import utils
 from pelican.generators import TemplatePagesGenerator
+from pelican.readers import Readers
 from pelican.settings import read_settings
 from pelican.tests.support import (LoggedTestCase, get_article,
                                    locale_available, unittest)
@@ -121,6 +120,51 @@ class TestUtils(LoggedTestCase):
 
         for value, expected in samples:
             self.assertEqual(utils.slugify(value, regex_subs=subs), expected)
+
+        self.assertEqual(utils.slugify('Cat', regex_subs=subs), 'cat')
+        self.assertEqual(
+            utils.slugify('Cat', regex_subs=subs, preserve_case=False), 'cat')
+        self.assertEqual(
+            utils.slugify('Cat', regex_subs=subs, preserve_case=True), 'Cat')
+
+    def test_slugify_use_unicode(self):
+
+        samples = (
+            ('this is a test', 'this-is-a-test'),
+            ('this        is a test', 'this-is-a-test'),
+            ('this → is ← a ↑ test', 'this-is-a-test'),
+            ('this--is---a test', 'this-is-a-test'),
+            ('unicode測試許功蓋，你看到了嗎？', 'unicode測試許功蓋你看到了嗎'),
+            ('Çığ', 'çığ')
+        )
+
+        settings = read_settings()
+        subs = settings['SLUG_REGEX_SUBSTITUTIONS']
+
+        for value, expected in samples:
+            self.assertEqual(
+                utils.slugify(value, regex_subs=subs, use_unicode=True),
+                expected)
+
+        # check with preserve case
+        for value, expected in samples:
+            self.assertEqual(
+                utils.slugify('Çığ', regex_subs=subs,
+                              preserve_case=True, use_unicode=True),
+                'Çığ')
+
+        # check normalization
+        samples = (
+            ('大飯原発４号機、１８日夜起動へ', '大飯原発4号機18日夜起動へ'),
+            (
+                '\N{LATIN SMALL LETTER C}\N{COMBINING CEDILLA}',
+                '\N{LATIN SMALL LETTER C WITH CEDILLA}'
+            )
+        )
+        for value, expected in samples:
+            self.assertEqual(
+                utils.slugify(value, regex_subs=subs, use_unicode=True),
+                expected)
 
     def test_slugify_substitute(self):
 
@@ -318,47 +362,91 @@ class TestUtils(LoggedTestCase):
                             self.assertNotIn(a_arts[4], b_arts[5].translations)
                             self.assertNotIn(a_arts[5], b_arts[4].translations)
 
-    def test_watchers(self):
-        # Test if file changes are correctly detected
-        # Make sure to handle not getting any files correctly.
+    def test_filesystemwatcher(self):
+        def create_file(name, content):
+            with open(name, 'w') as f:
+                f.write(content)
 
-        dirname = os.path.join(os.path.dirname(__file__), 'content')
-        folder_watcher = utils.folder_watcher(dirname, ['rst'])
+        # disable logger filter
+        from pelican.utils import logger
+        logger.disable_filter()
 
-        path = os.path.join(dirname, 'article_with_metadata.rst')
-        file_watcher = utils.file_watcher(path)
+        # create a temp "project" dir
+        root = mkdtemp()
+        content_path = os.path.join(root, 'content')
+        static_path = os.path.join(root, 'content', 'static')
+        config_file = os.path.join(root, 'config.py')
+        theme_path = os.path.join(root, 'mytheme')
 
-        # first check returns True
-        self.assertEqual(next(folder_watcher), True)
-        self.assertEqual(next(file_watcher), True)
+        # populate
+        os.mkdir(content_path)
+        os.mkdir(theme_path)
+        create_file(config_file,
+                    'PATH = "content"\n'
+                    'THEME = "mytheme"\n'
+                    'STATIC_PATHS = ["static"]')
 
-        # next check without modification returns False
-        self.assertEqual(next(folder_watcher), False)
-        self.assertEqual(next(file_watcher), False)
+        t = time.time() - 1000  # make sure it's in the "past"
+        os.utime(config_file, (t, t))
+        settings = read_settings(config_file)
 
-        # after modification, returns True
-        t = time.time()
-        os.utime(path, (t, t))
-        self.assertEqual(next(folder_watcher), True)
-        self.assertEqual(next(file_watcher), True)
+        watcher = utils.FileSystemWatcher(config_file, Readers, settings)
+        # should get a warning for static not not existing
+        self.assertLogCountEqual(1, 'Watched path does not exist: .*static')
 
-        # file watcher with None or empty path should return None
-        self.assertEqual(next(utils.file_watcher('')), None)
-        self.assertEqual(next(utils.file_watcher(None)), None)
+        # create it and update config
+        os.mkdir(static_path)
+        watcher.update_watchers(settings)
+        # no new warning
+        self.assertLogCountEqual(1, 'Watched path does not exist: .*static')
 
-        empty_path = os.path.join(os.path.dirname(__file__), 'empty')
-        try:
-            os.mkdir(empty_path)
-            os.mkdir(os.path.join(empty_path, "empty_folder"))
-            shutil.copy(__file__, empty_path)
+        # get modified values
+        modified = watcher.check()
+        # empty theme and content should raise warnings
+        self.assertLogCountEqual(1, 'No valid files found in content')
+        self.assertLogCountEqual(1, 'Empty theme folder. Using `basic` theme')
 
-            # if no files of interest, returns None
-            watcher = utils.folder_watcher(empty_path, ['rst'])
-            self.assertEqual(next(watcher), None)
-        except OSError:
-            self.fail("OSError Exception in test_files_changed test")
-        finally:
-            shutil.rmtree(empty_path, True)
+        self.assertIsNone(modified['content'])  # empty
+        self.assertIsNone(modified['theme'])  # empty
+        self.assertIsNone(modified['[static]static'])  # empty
+        self.assertTrue(modified['settings'])  # modified, first time
+
+        # add a content, add file to theme and check again
+        create_file(os.path.join(content_path, 'article.md'),
+                    'Title: test\n'
+                    'Date: 01-01-2020')
+
+        create_file(os.path.join(theme_path, 'dummy'),
+                    'test')
+
+        modified = watcher.check()
+        # no new warning
+        self.assertLogCountEqual(1, 'No valid files found in content')
+        self.assertLogCountEqual(1, 'Empty theme folder. Using `basic` theme')
+
+        self.assertIsNone(modified['[static]static'])  # empty
+        self.assertFalse(modified['settings'])  # not modified
+        self.assertTrue(modified['theme'])  # modified
+        self.assertTrue(modified['content'])  # modified
+
+        # change config, remove static path
+        create_file(config_file,
+                    'PATH = "content"\n'
+                    'THEME = "mytheme"\n'
+                    'STATIC_PATHS = []')
+
+        settings = read_settings(config_file)
+        watcher.update_watchers(settings)
+
+        modified = watcher.check()
+        self.assertNotIn('[static]static', modified)  # should be gone
+        self.assertTrue(modified['settings'])  # modified
+        self.assertFalse(modified['content'])  # not modified
+        self.assertFalse(modified['theme'])  # not modified
+
+        # cleanup
+        logger.enable_filter()
+        shutil.rmtree(root)
 
     def test_clean_output_dir(self):
         retention = ()
@@ -435,9 +523,9 @@ class TestUtils(LoggedTestCase):
         old_locale = locale.setlocale(locale.LC_ALL)
 
         if platform == 'win32':
-            locale.setlocale(locale.LC_ALL, str('Turkish'))
+            locale.setlocale(locale.LC_ALL, 'Turkish')
         else:
-            locale.setlocale(locale.LC_ALL, str('tr_TR.UTF-8'))
+            locale.setlocale(locale.LC_ALL, 'tr_TR.UTF-8')
 
         d = utils.SafeDatetime(2012, 8, 29)
 
@@ -469,9 +557,9 @@ class TestUtils(LoggedTestCase):
         old_locale = locale.setlocale(locale.LC_ALL)
 
         if platform == 'win32':
-            locale.setlocale(locale.LC_ALL, str('French'))
+            locale.setlocale(locale.LC_ALL, 'French')
         else:
-            locale.setlocale(locale.LC_ALL, str('fr_FR.UTF-8'))
+            locale.setlocale(locale.LC_ALL, 'fr_FR.UTF-8')
 
         d = utils.SafeDatetime(2012, 8, 29)
 
@@ -512,7 +600,7 @@ class TestCopy(unittest.TestCase):
     def setUp(self):
         self.root_dir = mkdtemp(prefix='pelicantests.')
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
 
     def tearDown(self):
         shutil.rmtree(self.root_dir)
@@ -621,26 +709,26 @@ class TestDateFormatter(unittest.TestCase):
         # This test tries to reproduce an issue that
         # occurred with python3.3 under macos10 only
         if platform == 'win32':
-            locale.setlocale(locale.LC_ALL, str('French'))
+            locale.setlocale(locale.LC_ALL, 'French')
         else:
-            locale.setlocale(locale.LC_ALL, str('fr_FR.UTF-8'))
+            locale.setlocale(locale.LC_ALL, 'fr_FR.UTF-8')
         date = utils.SafeDatetime(2014, 8, 14)
         # we compare the lower() dates since macos10 returns
         # "Jeudi" for %A whereas linux reports "jeudi"
         self.assertEqual(
-            u'jeudi, 14 août 2014',
+            'jeudi, 14 août 2014',
             utils.strftime(date, date_format="%A, %d %B %Y").lower())
         df = utils.DateFormatter()
         self.assertEqual(
-            u'jeudi, 14 août 2014',
+            'jeudi, 14 août 2014',
             df(date, date_format="%A, %d %B %Y").lower())
         # Let us now set the global locale to C:
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         # DateFormatter should still work as expected
         # since it is the whole point of DateFormatter
         # (This is where pre-2014/4/15 code fails on macos10)
         df_date = df(date, date_format="%A, %d %B %Y").lower()
-        self.assertEqual(u'jeudi, 14 août 2014', df_date)
+        self.assertEqual('jeudi, 14 août 2014', df_date)
 
     @unittest.skipUnless(locale_available('fr_FR.UTF-8') or
                          locale_available('French'),
@@ -714,35 +802,32 @@ class TestDateFormatter(unittest.TestCase):
 
 
 class TestSanitisedJoin(unittest.TestCase):
-    @unittest.skipIf(platform == 'win32',
-                     "Different filesystem root on Windows")
     def test_detect_parent_breakout(self):
         with self.assertRaisesRegex(
                 RuntimeError,
-                "Attempted to break out of output directory to /foo/test"):
+                "Attempted to break out of output directory to "
+                "(.*?:)?/foo/test"):  # (.*?:)? accounts for Windows root
             utils.sanitised_join(
                 "/foo/bar",
                 "../test"
             )
 
-    @unittest.skipIf(platform == 'win32',
-                     "Different filesystem root on Windows")
     def test_detect_root_breakout(self):
         with self.assertRaisesRegex(
                 RuntimeError,
-                "Attempted to break out of output directory to /test"):
+                "Attempted to break out of output directory to "
+                "(.*?:)?/test"):  # (.*?:)? accounts for Windows root
             utils.sanitised_join(
                 "/foo/bar",
                 "/test"
             )
 
-    @unittest.skipIf(platform == 'win32',
-                     "Different filesystem root on Windows")
     def test_pass_deep_subpaths(self):
         self.assertEqual(
             utils.sanitised_join(
                 "/foo/bar",
                 "test"
             ),
-            os.path.join("/foo/bar", "test")
+            utils.posixize_path(
+                os.path.abspath(os.path.join("/foo/bar", "test")))
         )

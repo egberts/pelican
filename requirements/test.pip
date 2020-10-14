@@ -1,6 +1,8 @@
 # Tests
-mock
+Pygments==2.6.1
 pytest
+pytest-cov
+pytest-xdist
 
 # Optional Packages
 Markdown >= 3.1

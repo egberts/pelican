@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import locale
 import logging
@@ -22,12 +20,12 @@ TEST_CONTENT = str(generate_lorem_ipsum(n=1))
 TEST_SUMMARY = generate_lorem_ipsum(n=1, html=False)
 
 
-class TestPage(LoggedTestCase):
+class TestBase(LoggedTestCase):
 
     def setUp(self):
         super().setUp()
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.page_kwargs = {
             'content': TEST_CONTENT,
             'context': {
@@ -54,6 +52,20 @@ class TestPage(LoggedTestCase):
         from pelican.contents import logger
         logger.enable_filter()
 
+    def _copy_page_kwargs(self):
+        # make a deep copy of page_kwargs
+        page_kwargs = {key: self.page_kwargs[key] for key in self.page_kwargs}
+        for key in page_kwargs:
+            if not isinstance(page_kwargs[key], dict):
+                break
+            page_kwargs[key] = {
+                subkey: page_kwargs[key][subkey] for subkey in page_kwargs[key]
+            }
+
+        return page_kwargs
+
+
+class TestPage(TestBase):
     def test_use_args(self):
         # Creating a page with arguments passed to the constructor should use
         # them to initialise object's attributes.
@@ -98,6 +110,20 @@ class TestPage(LoggedTestCase):
         page = Page(**page_kwargs)
         self.assertEqual(page.summary, '')
 
+    def test_summary_end_suffix(self):
+        # If a :SUMMARY_END_SUFFIX: is set, and there is no other summary,
+        # generated summary should contain the specified marker at the end.
+        page_kwargs = self._copy_page_kwargs()
+        settings = get_settings()
+        page_kwargs['settings'] = settings
+        del page_kwargs['metadata']['summary']
+        settings['SUMMARY_END_SUFFIX'] = 'test_marker'
+        settings['SUMMARY_MAX_LENGTH'] = 10
+        page = Page(**page_kwargs)
+        self.assertEqual(page.summary, truncate_html_words(TEST_CONTENT, 10,
+                                                           'test_marker'))
+        self.assertIn('test_marker', page.summary)
+
     def test_summary_get_summary_warning(self):
         """calling ._get_summary() should issue a warning"""
         page_kwargs = self._copy_page_kwargs()
@@ -120,6 +146,32 @@ class TestPage(LoggedTestCase):
         settings['SLUGIFY_SOURCE'] = "basename"
         page = Page(**page_kwargs)
         self.assertEqual(page.slug, 'foo')
+
+        # test slug from title with unicode and case
+
+        inputs = (
+            # (title, expected, preserve_case, use_unicode)
+            ('指導書', 'zhi-dao-shu', False, False),
+            ('指導書', 'Zhi-Dao-Shu', True, False),
+            ('指導書', '指導書', False, True),
+            ('指導書', '指導書', True, True),
+            ('Çığ', 'cig', False, False),
+            ('Çığ', 'Cig', True, False),
+            ('Çığ', 'çığ', False, True),
+            ('Çığ', 'Çığ', True, True),
+        )
+
+        settings = get_settings()
+        page_kwargs = self._copy_page_kwargs()
+        page_kwargs['settings'] = settings
+
+        for title, expected, preserve_case, use_unicode in inputs:
+            settings['SLUGIFY_PRESERVE_CASE'] = preserve_case
+            settings['SLUGIFY_USE_UNICODE'] = use_unicode
+            page_kwargs['metadata']['title'] = title
+            page = Page(**page_kwargs)
+            self.assertEqual(page.slug, expected,
+                             (title, preserve_case, use_unicode))
 
     def test_defaultlang(self):
         # If no lang is given, default to the default one.
@@ -227,18 +279,6 @@ class TestPage(LoggedTestCase):
         page_kwargs['metadata']['template'] = 'custom'
         custom_page = Page(**page_kwargs)
         self.assertEqual('custom', custom_page.template)
-
-    def _copy_page_kwargs(self):
-        # make a deep copy of page_kwargs
-        page_kwargs = dict([(key, self.page_kwargs[key]) for key in
-                            self.page_kwargs])
-        for key in page_kwargs:
-            if not isinstance(page_kwargs[key], dict):
-                break
-            page_kwargs[key] = dict([(subkey, page_kwargs[key][subkey])
-                                     for subkey in page_kwargs[key]])
-
-        return page_kwargs
 
     def test_signal(self):
         def receiver_test_function(sender):
@@ -562,7 +602,7 @@ class TestPage(LoggedTestCase):
         assert content.author == content.authors[0]
 
 
-class TestArticle(TestPage):
+class TestArticle(TestBase):
     def test_template(self):
         # Articles default to article, metadata overwrites
         default_article = Article(**self.page_kwargs)

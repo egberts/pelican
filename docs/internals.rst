@@ -32,7 +32,7 @@ The logic is separated into different classes and concepts:
   inputs.
 
 * Pelican also uses templates, so it's easy to write your own theme. The
-  syntax is `Jinja2 <http://jinja.pocoo.org/>`_ and is very easy to learn, so
+  syntax is `Jinja2 <https://palletsprojects.com/p/jinja/>`_ and is very easy to learn, so
   don't hesitate to jump in and build your own theme.
 
 How to implement a new reader?
@@ -44,17 +44,22 @@ HTML content and some metadata.
 
 Take a look at the Markdown reader::
 
+    from pelican.readers import BaseReader
+    from pelican.utils import pelican_open
+    from markdown import Markdown
+
     class MarkdownReader(BaseReader):
-        enabled = bool(Markdown)
+        enabled = True
 
         def read(self, source_path):
             """Parse content and metadata of markdown files"""
-            text = pelican_open(source_path)
-            md_extensions = {'markdown.extensions.meta': {},
-                             'markdown.extensions.codehilite': {}}
-            md = Markdown(extensions=md_extensions.keys(),
-                          extension_configs=md_extensions)
-            content = md.convert(text)
+
+            with pelican_open(source_path) as text:
+                md_extensions = {'markdown.extensions.meta': {},
+                                 'markdown.extensions.codehilite': {}}
+                md = Markdown(extensions=md_extensions.keys(),
+                              extension_configs=md_extensions)
+                content = md.convert(text)
 
             metadata = {}
             for name, value in md.Meta.items():

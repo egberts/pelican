@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import copy
 import locale
 import os
@@ -9,8 +7,8 @@ from sys import platform
 
 from pelican.settings import (DEFAULT_CONFIG, DEFAULT_THEME,
                               _printf_s_to_format_field,
-                              configure_settings, handle_deprecated_settings,
-                              read_settings)
+                              coerce_overrides, configure_settings,
+                              handle_deprecated_settings, read_settings)
 from pelican.tests.support import unittest
 
 
@@ -21,7 +19,7 @@ class TestSettingsConfiguration(unittest.TestCase):
     """
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.PATH = abspath(dirname(__file__))
         default_conf = join(self.PATH, 'default_conf.py')
         self.settings = read_settings(default_conf)
@@ -138,12 +136,14 @@ class TestSettingsConfiguration(unittest.TestCase):
             settings['ARTICLE_DIR']
             settings['PAGE_DIR']
 
+    # locale.getdefaultlocale() is broken on Windows
+    # See: https://bugs.python.org/issue37945
     @unittest.skipIf(platform == 'win32', "Doesn't work on Windows")
     def test_default_encoding(self):
         # Test that the default locale is set if not specified in settings
 
         # Reset locale to Python's default locale
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.assertEqual(self.settings['LOCALE'], DEFAULT_CONFIG['LOCALE'])
 
         configure_settings(self.settings)
@@ -304,3 +304,18 @@ class TestSettingsConfiguration(unittest.TestCase):
                          [(r'C\+\+', 'cpp')] +
                          self.settings['SLUG_REGEX_SUBSTITUTIONS'])
         self.assertNotIn('SLUG_SUBSTITUTIONS', settings)
+
+    def test_coerce_overrides(self):
+        overrides = coerce_overrides({
+            'ARTICLE_EXCLUDES': '["testexcl"]',
+            'READERS': '{"foo": "bar"}',
+            'STATIC_EXCLUDE_SOURCES': 'true',
+            'THEME_STATIC_DIR': 'theme',
+            })
+        expected = {
+            'ARTICLE_EXCLUDES': ["testexcl"],
+            'READERS': {"foo": "bar"},
+            'STATIC_EXCLUDE_SOURCES': True,
+            'THEME_STATIC_DIR': 'theme',
+        }
+        self.assertDictEqual(overrides, expected)

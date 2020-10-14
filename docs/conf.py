@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 
@@ -17,13 +15,13 @@ extensions = ['sphinx.ext.autodoc',
 source_suffix = '.rst'
 master_doc = 'index'
 project = 'Pelican'
-copyright = '2010 – present, Alexis Metaireau and contributors'
+copyright = '2010 – present, Justin Mayer, Alexis Metaireau, and contributors'
 exclude_patterns = ['_build']
 release = __version__
 version = '.'.join(release.split('.')[:1])
 last_stable = __version__
 rst_prolog = '''
-.. |last_stable| replace:: :pelican-doc:`{0}`
+.. |last_stable| replace:: :pelican-doc:`{}`
 '''.format(last_stable)
 
 # The name of the Pygments (syntax highlighting) style to use.
@@ -63,19 +61,19 @@ html_show_sourcelink = False
 
 def setup(app):
     # overrides for wide tables in RTD theme
-    app.add_stylesheet('theme_overrides.css')   # path relative to _static
+    app.add_css_file('theme_overrides.css')   # path relative to _static
 
 
 # -- Options for LaTeX output -------------------------------------------------
 latex_documents = [
-    ('index', 'Pelican.tex', 'Pelican Documentation', 'Alexis Métaireau',
+    ('index', 'Pelican.tex', 'Pelican Documentation', 'Justin Mayer',
      'manual'),
 ]
 
 # -- Options for manual page output -------------------------------------------
 man_pages = [
     ('index', 'pelican', 'pelican documentation',
-     ['Alexis Métaireau'], 1),
+     ['Justin Mayer'], 1),
     ('pelican-themes', 'pelican-themes', 'A theme manager for Pelican',
      ['Mickaël Raybaud'], 1),
     ('themes', 'pelican-theming', 'How to create themes for Pelican',

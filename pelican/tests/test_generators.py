@@ -1,23 +1,16 @@
-# -*- coding: utf-8 -*-
-
 import locale
 import os
+import sys
 from shutil import copy, rmtree
 from tempfile import mkdtemp
+from unittest.mock import MagicMock
 
 from pelican.generators import (ArticlesGenerator, Generator, PagesGenerator,
                                 PelicanTemplateNotFound, StaticGenerator,
                                 TemplatePagesGenerator)
-from pelican.tests.support import get_context, get_settings, unittest
+from pelican.tests.support import (can_symlink, get_context, get_settings,
+                                   unittest)
 from pelican.writers import Writer
-
-try:
-    from unittest.mock import MagicMock
-except ImportError:
-    try:
-        from mock import MagicMock
-    except ImportError:
-        MagicMock = False
 
 
 CUR_DIR = os.path.dirname(__file__)
@@ -27,7 +20,7 @@ CONTENT_DIR = os.path.join(CUR_DIR, 'content')
 class TestGenerator(unittest.TestCase):
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.settings = get_settings()
         self.settings['READERS'] = {'asc': None}
         self.generator = Generator(self.settings.copy(), self.settings,
@@ -200,7 +193,6 @@ class TestArticlesGenerator(unittest.TestCase):
         return [[article.title, article.status, article.category.name,
                  article.template] for article in articles]
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_generate_feeds(self):
         settings = get_settings()
         settings['CACHE_PATH'] = self.temp_cache
@@ -220,7 +212,6 @@ class TestArticlesGenerator(unittest.TestCase):
         generator.generate_feeds(writer)
         self.assertFalse(writer.write_feed.called)
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_generate_feeds_override_url(self):
         settings = get_settings()
         settings['CACHE_PATH'] = self.temp_cache
@@ -239,6 +230,8 @@ class TestArticlesGenerator(unittest.TestCase):
             ['Article title', 'published', 'Default', 'article'],
             ['Article with markdown and summary metadata multi', 'published',
              'Default', 'article'],
+            ['Article with markdown and nested summary metadata', 'published',
+             'Default', 'article'],
             ['Article with markdown and summary metadata single', 'published',
              'Default', 'article'],
             ['Article with markdown containing footnotes', 'published',
@@ -246,6 +239,10 @@ class TestArticlesGenerator(unittest.TestCase):
             ['Article with template', 'published', 'Default', 'custom'],
             ['Metadata tags as list!', 'published', 'Default', 'article'],
             ['Rst with filename metadata', 'published', 'yeah', 'article'],
+            ['One -, two --, three --- dashes!', 'published', 'Default',
+             'article'],
+            ['One -, two --, three --- dashes!', 'published', 'Default',
+             'article'],
             ['Test Markdown extensions', 'published', 'Default', 'article'],
             ['Test markdown File', 'published', 'test', 'article'],
             ['Test md File', 'published', 'test', 'article'],
@@ -256,6 +253,11 @@ class TestArticlesGenerator(unittest.TestCase):
             ['This is a super article !', 'published', 'Yeah', 'article'],
             ['Article with Nonconformant HTML meta tags', 'published',
                 'Default', 'article'],
+            ['This is a super article !', 'published', 'yeah', 'article'],
+            ['This is a super article !', 'published', 'yeah', 'article'],
+            ['This is a super article !', 'published', 'yeah', 'article'],
+            ['This is a super article !', 'published', 'yeah', 'article'],
+            ['This is a super article !', 'published', 'yeah', 'article'],
             ['This is a super article !', 'published', 'yeah', 'article'],
             ['This is a super article !', 'published', 'yeah', 'article'],
             ['This is a super article !', 'published', 'yeah', 'article'],
@@ -326,7 +328,6 @@ class TestArticlesGenerator(unittest.TestCase):
         categories_expected = ['default', 'yeah', 'test', 'zhi-dao-shu']
         self.assertEqual(sorted(categories), sorted(categories_expected))
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_direct_templates_save_as_url_default(self):
 
         settings = get_settings()
@@ -344,7 +345,6 @@ class TestArticlesGenerator(unittest.TestCase):
                                  template_name='archives',
                                  page_name='archives', url="archives.html")
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_direct_templates_save_as_url_modified(self):
 
         settings = get_settings()
@@ -365,7 +365,6 @@ class TestArticlesGenerator(unittest.TestCase):
                                  page_name='archives/index',
                                  url="archives/")
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_direct_templates_save_as_false(self):
 
         settings = get_settings()
@@ -390,14 +389,13 @@ class TestArticlesGenerator(unittest.TestCase):
         self.assertIn(custom_template, self.articles)
         self.assertIn(standard_template, self.articles)
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_period_in_timeperiod_archive(self):
         """
         Test that the context of a generated period_archive is passed
         'period' : a tuple of year, month, day according to the time period
         """
         old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         settings = get_settings()
 
         settings['YEAR_ARCHIVE_SAVE_AS'] = 'posts/{date:%Y}/index.html'
@@ -554,11 +552,14 @@ class TestArticlesGenerator(unittest.TestCase):
             'Article title',
             'Article with Nonconformant HTML meta tags',
             'Article with an inline SVG',
+            'Article with markdown and nested summary metadata',
             'Article with markdown and summary metadata multi',
             'Article with markdown and summary metadata single',
             'Article with markdown containing footnotes',
             'Article with template',
             'Metadata tags as list!',
+            'One -, two --, three --- dashes!',
+            'One -, two --, three --- dashes!',
             'Rst with filename metadata',
             'Test Markdown extensions',
             'Test markdown File',
@@ -566,6 +567,11 @@ class TestArticlesGenerator(unittest.TestCase):
             'Test mdown File',
             'Test metadata duplicates',
             'Test mkd File',
+            'This is a super article !',
+            'This is a super article !',
+            'This is a super article !',
+            'This is a super article !',
+            'This is a super article !',
             'This is a super article !',
             'This is a super article !',
             'This is a super article !',
@@ -779,7 +785,7 @@ class TestTemplatePagesGenerator(unittest.TestCase):
         self.temp_content = mkdtemp(prefix='pelicantests.')
         self.temp_output = mkdtemp(prefix='pelicantests.')
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
 
     def tearDown(self):
         rmtree(self.temp_content)
@@ -814,7 +820,7 @@ class TestTemplatePagesGenerator(unittest.TestCase):
         self.assertTrue(os.path.exists(output_path))
 
         # output content is correct
-        with open(output_path, 'r') as output_file:
+        with open(output_path) as output_file:
             self.assertEqual(output_file.read(), 'foo: bar')
 
 
@@ -1004,10 +1010,9 @@ class TestStaticGenerator(unittest.TestCase):
             f.write("staticcontent")
         self.generator.generate_context()
         self.generator.generate_output(None)
-        with open(self.endfile, "r") as f:
+        with open(self.endfile) as f:
             self.assertEqual(f.read(), "staticcontent")
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_file_update_required_when_dest_does_not_exist(self):
         staticfile = MagicMock()
         staticfile.source_path = self.startfile
@@ -1017,7 +1022,6 @@ class TestStaticGenerator(unittest.TestCase):
         update_required = self.generator._file_update_required(staticfile)
         self.assertTrue(update_required)
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_dest_and_source_mtimes_are_equal(self):
         staticfile = MagicMock()
         staticfile.source_path = self.startfile
@@ -1030,7 +1034,6 @@ class TestStaticGenerator(unittest.TestCase):
         isnewer = self.generator._source_is_newer(staticfile)
         self.assertFalse(isnewer)
 
-    @unittest.skipUnless(MagicMock, 'Needs Mock module')
     def test_source_is_newer(self):
         staticfile = MagicMock()
         staticfile.source_path = self.startfile
@@ -1082,6 +1085,7 @@ class TestStaticGenerator(unittest.TestCase):
         self.generator.generate_output(None)
         self.assertTrue(os.path.samefile(self.startfile, self.endfile))
 
+    @unittest.skipUnless(can_symlink(), 'No symlink privilege')
     def test_can_symlink_when_hardlink_not_possible(self):
         self.settings['STATIC_CREATE_LINKS'] = True
         with open(self.startfile, "w") as f:
@@ -1089,40 +1093,29 @@ class TestStaticGenerator(unittest.TestCase):
         os.mkdir(os.path.join(self.temp_output, "static"))
         self.generator.fallback_to_symlinks = True
         self.generator.generate_context()
-        try:
-            self.generator.generate_output(None)
-        except OSError as e:
-            # On Windows, possibly others, due to not holding symbolic link
-            # privilege
-            self.skipTest(e)
+        self.generator.generate_output(None)
         self.assertTrue(os.path.islink(self.endfile))
 
+    @unittest.skipUnless(can_symlink(), 'No symlink privilege')
     def test_existing_symlink_is_considered_up_to_date(self):
         self.settings['STATIC_CREATE_LINKS'] = True
         with open(self.startfile, "w") as f:
             f.write("staticcontent")
         os.mkdir(os.path.join(self.temp_output, "static"))
-        try:
-            os.symlink(self.startfile, self.endfile)
-        except OSError as e:
-            # On Windows, possibly others
-            self.skipTest(e)
+        os.symlink(self.startfile, self.endfile)
         staticfile = MagicMock()
         staticfile.source_path = self.startfile
         staticfile.save_as = self.endfile
         requires_update = self.generator._file_update_required(staticfile)
         self.assertFalse(requires_update)
 
+    @unittest.skipUnless(can_symlink(), 'No symlink privilege')
     def test_invalid_symlink_is_overwritten(self):
         self.settings['STATIC_CREATE_LINKS'] = True
         with open(self.startfile, "w") as f:
             f.write("staticcontent")
         os.mkdir(os.path.join(self.temp_output, "static"))
-        try:
-            os.symlink("invalid", self.endfile)
-        except OSError as e:
-            # On Windows, possibly others
-            self.skipTest(e)
+        os.symlink("invalid", self.endfile)
         staticfile = MagicMock()
         staticfile.source_path = self.startfile
         staticfile.save_as = self.endfile
@@ -1132,8 +1125,18 @@ class TestStaticGenerator(unittest.TestCase):
         self.generator.generate_context()
         self.generator.generate_output(None)
         self.assertTrue(os.path.islink(self.endfile))
-        self.assertEqual(os.path.realpath(self.endfile),
-                         os.path.realpath(self.startfile))
+
+        # os.path.realpath is broken on Windows before python3.8 for symlinks.
+        # This is a (ugly) workaround.
+        # see: https://bugs.python.org/issue9949
+        if os.name == 'nt' and sys.version_info < (3, 8):
+            def get_real_path(path):
+                return os.readlink(path) if os.path.islink(path) else path
+        else:
+            get_real_path = os.path.realpath
+
+        self.assertEqual(get_real_path(self.endfile),
+                         get_real_path(self.startfile))
 
     def test_delete_existing_file_before_mkdir(self):
         with open(self.startfile, "w") as f:
@@ -1145,3 +1148,80 @@ class TestStaticGenerator(unittest.TestCase):
         self.assertTrue(
             os.path.isdir(os.path.join(self.temp_output, "static")))
         self.assertTrue(os.path.isfile(self.endfile))
+
+
+class TestJinja2Environment(unittest.TestCase):
+
+    def setUp(self):
+        self.temp_content = mkdtemp(prefix='pelicantests.')
+        self.temp_output = mkdtemp(prefix='pelicantests.')
+        self.old_locale = locale.setlocale(locale.LC_ALL)
+        locale.setlocale(locale.LC_ALL, 'C')
+
+    def tearDown(self):
+        rmtree(self.temp_content)
+        rmtree(self.temp_output)
+        locale.setlocale(locale.LC_ALL, self.old_locale)
+
+    def _test_jinja2_helper(self, additional_settings, content, expected):
+        settings = get_settings()
+        settings['STATIC_PATHS'] = ['static']
+        settings['TEMPLATE_PAGES'] = {
+            'template/source.html': 'generated/file.html'
+        }
+        settings.update(additional_settings)
+
+        generator = TemplatePagesGenerator(
+            context={'foo': 'foo', 'bar': 'bar'}, settings=settings,
+            path=self.temp_content, theme='', output_path=self.temp_output)
+
+        # create a dummy template file
+        template_dir = os.path.join(self.temp_content, 'template')
+        template_path = os.path.join(template_dir, 'source.html')
+        os.makedirs(template_dir)
+        with open(template_path, 'w') as template_file:
+            template_file.write(content)
+
+        writer = Writer(self.temp_output, settings=settings)
+        generator.generate_output(writer)
+
+        output_path = os.path.join(self.temp_output, 'generated', 'file.html')
+
+        # output file has been generated
+        self.assertTrue(os.path.exists(output_path))
+
+        # output content is correct
+        with open(output_path) as output_file:
+            self.assertEqual(output_file.read(), expected)
+
+    def test_jinja2_filter(self):
+        """JINJA_FILTERS adds custom filters to Jinja2 environment"""
+        content = 'foo: {{ foo|custom_filter }}, bar: {{ bar|custom_filter }}'
+        settings = {'JINJA_FILTERS': {'custom_filter': lambda x: x.upper()}}
+        expected = 'foo: FOO, bar: BAR'
+
+        self._test_jinja2_helper(settings, content, expected)
+
+    def test_jinja2_test(self):
+        """JINJA_TESTS adds custom tests to Jinja2 environment"""
+        content = 'foo {{ foo is custom_test }}, bar {{ bar is custom_test }}'
+        settings = {'JINJA_TESTS': {'custom_test': lambda x: x == 'bar'}}
+        expected = 'foo False, bar True'
+
+        self._test_jinja2_helper(settings, content, expected)
+
+    def test_jinja2_global(self):
+        """JINJA_GLOBALS adds custom globals to Jinja2 environment"""
+        content = '{{ custom_global }}'
+        settings = {'JINJA_GLOBALS': {'custom_global': 'foobar'}}
+        expected = 'foobar'
+
+        self._test_jinja2_helper(settings, content, expected)
+
+    def test_jinja2_extension(self):
+        """JINJA_ENVIRONMENT adds extensions to Jinja2 environment"""
+        content = '{% set stuff = [] %}{% do stuff.append(1) %}{{ stuff }}'
+        settings = {'JINJA_ENVIRONMENT': {'extensions': ['jinja2.ext.do']}}
+        expected = '[1]'
+
+        self._test_jinja2_helper(settings, content, expected)

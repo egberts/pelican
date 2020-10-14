@@ -9,18 +9,21 @@ features to Pelican without having to directly modify the Pelican core.
 How to use plugins
 ==================
 
-Starting with version 5.0, Pelican moved to a new plugin structure utilizing
-namespace packages. Plugins supporting this structure will install under the
-namespace package ``pelican.plugins`` and can be automatically discovered
-by Pelican.
+Starting with version 4.5, Pelican moved to a new plugin structure utilizing
+namespace packages that can be easily installed via Pip_. Plugins supporting
+this structure will install under the namespace package ``pelican.plugins`` and
+can be automatically discovered by Pelican. To see a list of plugins that are
+active in your environment, run::
 
-If you leave the ``PLUGINS`` setting as default (``None``), Pelican will then
-collect the namespace plugins and register them. If on the other hand you
-specify a ``PLUGINS`` settings as a list of plugins, this autodiscovery will
-be disabled and only listed plugins will be registered and you will have to
-explicitly list the namespace plugins as well.
+    pelican-plugins
 
-If you are using ``PLUGINS`` setting, you can specify plugins in two ways.
+If you leave the ``PLUGINS`` setting as default (``None``), Pelican will
+automatically discover namespace plugins and register them. If, on the other
+hand, you specify a ``PLUGINS`` setting as a list of plugins, this
+auto-discovery will be disabled. At that point, only the plugins you specify
+will be registered, and you must explicitly list any namespace plugins as well.
+
+If you are using the ``PLUGINS`` setting, you can specify plugins in two ways.
 The first method specifies plugins as a list of strings. Namespace plugins can
 be specified either by their full names (``pelican.plugins.myplugin``) or by
 their short names (``myplugin``)::
@@ -52,8 +55,8 @@ the ``PLUGIN_PATHS`` list can be absolute or relative to the settings file::
 Where to find plugins
 =====================
 Namespace plugins can be found in the `pelican-plugins organization`_ as
-individual repositories. Legacy plugins are collected in the `pelican-plugins
-repository`_ and they will be slowly phased out in favor of the namespace
+individual repositories. Legacy plugins are located in the `pelican-plugins
+repository`_ and will be gradually phased out in favor of the namespace
 versions.
 
 .. _pelican-plugins organization: https://github.com/pelican-plugins
@@ -67,16 +70,20 @@ How to create plugins
 =====================
 
 Plugins are based on the concept of signals. Pelican sends signals, and plugins
-subscribe to those signals. The list of signals are defined in a subsequent
-section.
+subscribe to those signals. The list of available signals is documented in a
+subsequent section.
 
 The only rule to follow for plugins is to define a ``register`` callable, in
 which you map the signals to your plugin logic. Let's take a simple example::
 
+    import logging
+
     from pelican import signals
 
+    log = logging.getLogger(__name__)
+
     def test(sender):
-        print("{} initialized !!".format(sender))
+        log.debug("%s initialized !!", sender)
 
     def register():
         signals.initialized.connect(test)
@@ -86,6 +93,10 @@ which you map the signals to your plugin logic. Let's take a simple example::
     Signal receivers are weakly-referenced and thus must not be defined within
     your ``register`` callable or they will be garbage-collected before the
     signal is emitted.
+
+If multiple plugins connect to the same signal, there is no way to guarantee or
+control in which order the plugins will be executed. This is a limitation
+inherited from Blinker_, the dependency Pelican uses to implement signals.
 
 Namespace plugin structure
 --------------------------
@@ -109,8 +120,8 @@ empty besides the listed folders in the above structure and keep your
 plugin related files contained solely in the ``pelican/plugins/myplugin``
 folder to avoid any issues.
 
-For easily setting up the proper structure, a `cookiecutter template for
-plugins`_ is provided. Refer to the README in the link for how to use it.
+To easily set up the proper structure, a `cookiecutter template for plugins`_
+is provided. Refer to that project's README for instructions on how to use it.
 
 .. _cookiecutter template for plugins: https://github.com/getpelican/cookiecutter-pelican-plugin
 
@@ -262,4 +273,7 @@ Adding a new generator is also really easy. You might want to have a look at
     def register():
         signals.get_generators.connect(get_generators)
 
+
+.. _Pip: https://pip.pypa.io/
 .. _pelican-plugins bug #314: https://github.com/getpelican/pelican-plugins/issues/314
+.. _Blinker: https://pythonhosted.org/blinker/

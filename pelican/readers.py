@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import logging
 import os
@@ -101,7 +99,7 @@ def _filter_discardable_metadata(metadata):
     return {name: val for name, val in metadata.items() if val is not _DISCARD}
 
 
-class BaseReader(object):
+class BaseReader:
     """Base class to read files.
 
     This class is used to process static files, and it can be inherited for
@@ -229,7 +227,7 @@ class RstReader(BaseReader):
                 if element.tagname == 'field':  # custom fields (e.g. summary)
                     name_elem, body_elem = element.children
                     name = name_elem.astext()
-                    if name in formatted_fields:
+                    if name.lower() in formatted_fields:
                         value = render_node_to_html(
                             document, body_elem,
                             self.field_body_translator_class)
@@ -301,6 +299,9 @@ class MarkdownReader(BaseReader):
     def _parse_metadata(self, meta):
         """Return the dict containing document metadata"""
         formatted_fields = self.settings['FORMATTED_FIELDS']
+
+        # prevent metadata extraction in fields
+        self._md.preprocessors.deregister('meta')
 
         output = {}
         for name, value in meta.items():
@@ -582,6 +583,14 @@ class Readers(FileStampDataCacher):
             from typogrify.filters import typogrify
             import smartypants
 
+            typogrify_dashes = self.settings['TYPOGRIFY_DASHES']
+            if typogrify_dashes == 'oldschool':
+                smartypants.Attr.default = smartypants.Attr.set2
+            elif typogrify_dashes == 'oldschool_inverted':
+                smartypants.Attr.default = smartypants.Attr.set3
+            else:
+                smartypants.Attr.default = smartypants.Attr.set1
+
             # Tell `smartypants` to also replace &quot; HTML entities with
             # smart quotes. This is necessary because Docutils has already
             # replaced double quotes with said entities by the time we run
@@ -676,6 +685,7 @@ def path_metadata(full_path, source_path, settings=None):
         if settings.get('DEFAULT_DATE', None) == 'fs':
             metadata['date'] = datetime.datetime.fromtimestamp(
                 os.stat(full_path).st_mtime)
+            metadata['modified'] = metadata['date']
 
         # Apply EXTRA_PATH_METADATA for the source path and the paths of any
         # parent directories. Sorting EPM first ensures that the most specific
@@ -686,7 +696,7 @@ def path_metadata(full_path, source_path, settings=None):
             # Enforce a trailing slash when checking for parent directories.
             # This prevents false positives when one file or directory's name
             # is a prefix of another's.
-            dirpath = os.path.join(path, '')
+            dirpath = posixize_path(os.path.join(path, ''))
             if source_path == path or source_path.startswith(dirpath):
                 metadata.update(meta)
 

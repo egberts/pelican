@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import copy
 import datetime
 import locale
@@ -22,7 +20,7 @@ from pelican.urlwrappers import (Author, Category, Tag, URLWrapper)  # NOQA
 logger = logging.getLogger(__name__)
 
 
-class Content(object):
+class Content:
     """Represents a content.
 
     :param content: the string to parse, containing the original content.
@@ -92,16 +90,18 @@ class Content(object):
         if not hasattr(self, 'slug'):
             if (settings['SLUGIFY_SOURCE'] == 'title' and
                     hasattr(self, 'title')):
-                self.slug = slugify(
-                    self.title,
-                    regex_subs=settings.get('SLUG_REGEX_SUBSTITUTIONS', []))
+                value = self.title
             elif (settings['SLUGIFY_SOURCE'] == 'basename' and
                     source_path is not None):
-                basename = os.path.basename(
-                    os.path.splitext(source_path)[0])
+                value = os.path.basename(os.path.splitext(source_path)[0])
+            else:
+                value = None
+            if value is not None:
                 self.slug = slugify(
-                    basename,
-                    regex_subs=settings.get('SLUG_REGEX_SUBSTITUTIONS', []))
+                    value,
+                    regex_subs=settings.get('SLUG_REGEX_SUBSTITUTIONS', []),
+                    preserve_case=settings.get('SLUGIFY_PRESERVE_CASE', False),
+                    use_unicode=settings.get('SLUGIFY_USE_UNICODE', False))
 
         self.source_path = source_path
         self.relative_source_path = self.get_relative_source_path()
@@ -121,6 +121,7 @@ class Content(object):
         # manage timezone
         default_timezone = settings.get('TIMEZONE', 'UTC')
         timezone = getattr(self, 'timezone', default_timezone)
+        self.timezone = pytz.timezone(timezone)
 
         if hasattr(self, 'date'):
             self.date = set_date_tzinfo(self.date, timezone)
@@ -213,7 +214,7 @@ class Content(object):
     def _expand_settings(self, key, klass=None):
         if not klass:
             klass = self.__class__.__name__
-        fq_key = ('%s_%s' % (klass, key)).upper()
+        fq_key = ('{}_{}'.format(klass, key)).upper()
         return self.settings[fq_key].format(**self.url_format)
 
     def get_url_setting(self, key):
@@ -321,7 +322,7 @@ class Content(object):
                 (?:href|src|poster|data|cite|formaction|action)\s*=\s*)
 
             (?P<quote>["\'])      # require value to be quoted
-            (?P<path>{0}(?P<value>.*?))  # the url value
+            (?P<path>{}(?P<value>.*?))  # the url value
             \2""".format(intrasite_link_regex)
         return re.compile(regex, re.X)
 
@@ -390,7 +391,8 @@ class Content(object):
             return self.content
 
         return truncate_html_words(self.content,
-                                   self.settings['SUMMARY_MAX_LENGTH'])
+                                   self.settings['SUMMARY_MAX_LENGTH'],
+                                   self.settings['SUMMARY_END_SUFFIX'])
 
     @property
     def summary(self):
@@ -511,7 +513,7 @@ class Article(Content):
 
         # if we are a draft and there is no date provided, set max datetime
         if not hasattr(self, 'date') and self.status == 'draft':
-            self.date = datetime.datetime.max
+            self.date = datetime.datetime.max.replace(tzinfo=self.timezone)
 
     def _expand_settings(self, key):
         klass = 'draft' if self.status == 'draft' else 'article'

@@ -48,7 +48,7 @@ themes to style code syntax highlighting via CSS. Specifically, you can
 customize the appearance of your syntax highlighting via the ``.highlight pre``
 class in your theme's CSS file. To see how various styles can be used to render
 Django code, for example, use the style selector drop-down at top-right on the
-`Pygments project demo site <http://pygments.org/demo/>`_.
+`Pygments project demo site <https://pygments.org/demo/>`_.
 
 You can use the following example commands to generate a starting CSS file from
 a Pygments built-in style (in this case, "monokai") and then copy the generated
@@ -74,7 +74,7 @@ Markdown format, you will need to explicitly install the Markdown library. You
 can do so by typing the following command, prepending ``sudo`` if permissions
 require it::
 
-    pip install markdown
+    python -m pip install markdown
 
 Can I use arbitrary metadata in my templates?
 =============================================
@@ -167,7 +167,7 @@ I'm getting a warning about feeds generated without SITEURL being set properly
 ==============================================================================
 
 `RSS and Atom feeds require all URL links to be absolute
-<http://validator.w3.org/feed/docs/rss2.html#comments>`_. In order to properly
+<https://validator.w3.org/feed/docs/rss2.html#comments>`_. In order to properly
 generate links in Pelican you will need to set ``SITEURL`` to the full path of
 your site.
 
@@ -273,3 +273,19 @@ as articles or pages before they get treated as static files.
 
 To circumvent this issue either use the appropriate ``*_EXCLUDES`` setting or
 disable the offending reader via ``READERS`` if you don't need it.
+
+Why is [arbitrary Markdown syntax] not supported?
+=================================================
+
+Pelican does not directly handle Markdown processing and instead delegates that
+task to the Python-Markdown_ project, the core of which purposefully follows
+the original Markdown syntax rules and not the myriad Markdown "flavors" that
+have subsequently propagated. That said, Python-Markdown_ is quite modular, and
+the syntax you are looking for may be provided by one of the many available
+`Markdown Extensions`_. Alternatively, some folks have created Pelican plugins
+that support Markdown variants, so that may be your best choice if there is a
+particular variant you want to use when writing your content.
+
+
+.. _Python-Markdown: https://github.com/Python-Markdown/markdown
+.. _Markdown Extensions: https://python-markdown.github.io/extensions/

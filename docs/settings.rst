@@ -9,6 +9,12 @@ line::
 If you used the ``pelican-quickstart`` command, your primary settings file will
 be named ``pelicanconf.py`` by default.
 
+You can also specify extra settings via ``-e`` / ``--extra-settings`` option
+flags, which will override default settings as well as any defined within
+settings files::
+
+    pelican content -e DELETE_OUTPUT_DIRECTORY=true
+
 .. note::
 
    When experimenting with different settings (especially the metadata ones)
@@ -98,10 +104,24 @@ Basic settings
    should map the filtername to the filter function.
 
    Example::
+    import sys
+    sys.path.append('to/your/path')
 
+    from custom_filter import urlencode_filter
     JINJA_FILTERS = {'urlencode': urlencode_filter}
 
-   See `Jinja custom filters documentation`_.
+   See: `Jinja custom filters documentation`_.
+
+.. data:: JINJA_GLOBALS = {}
+
+   A dictionary of custom objects to map into the Jinja2 global environment
+   namespace. The dictionary should map the global name to the global
+   variable/function. See: `Jinja global namespace documentation`_.
+
+.. data:: JINJA_TESTS = {}
+
+   A dictionary of custom Jinja2 tests you want to use. The dictionary should
+   map test names to test functions. See: `Jinja custom tests documentation`_.
 
 .. data:: LOG_FILTER = []
 
@@ -157,7 +177,8 @@ Basic settings
 
 .. data:: OUTPUT_PATH = 'output/'
 
-   Where to output the generated files.
+   Where to output the generated files. This should correspond to your web
+   server's virtual host root directory.
 
 .. data:: PATH
 
@@ -256,7 +277,7 @@ Basic settings
    If set to True, several typographical improvements will be incorporated into
    the generated HTML via the `Typogrify
    <https://pypi.python.org/pypi/typogrify>`_ library, which can be installed
-   via: ``pip install typogrify``
+   via: ``python -m pip install typogrify``
 
 .. data:: TYPOGRIFY_IGNORE_TAGS = []
 
@@ -264,12 +285,28 @@ Basic settings
    ``pre`` and ``code`` tags. This requires that Typogrify version 2.0.4 or
    later is installed
 
+.. data:: TYPOGRIFY_DASHES = 'default'
+
+   This setting controls how Typogrify sets up the Smartypants filter to
+   interpret multiple dash/hyphen/minus characters. A single ASCII dash
+   character (``-``) is always rendered as a hyphen. The ``default`` setting
+   does not handle en-dashes and converts double-hyphens into em-dashes. The
+   ``oldschool`` setting renders both en-dashes and em-dashes when it sees two
+   (``--``) and three (``---``) hyphen characters, respectively. The
+   ``oldschool_inverted`` setting turns two hyphens into an em-dash and three
+   hyphens into an en-dash.
+
 .. data:: SUMMARY_MAX_LENGTH = 50
 
    When creating a short summary of an article, this will be the default length
    (measured in words) of the text created.  This only applies if your content
    does not otherwise specify a summary. Setting to ``None`` will cause the
    summary to be a copy of the original content.
+
+.. data:: SUMMARY_END_SUFFIX = '…'
+
+   When creating a short summary of an article and the result was truncated to
+   match the required word length, this will be used as the truncation suffix.
 
 .. data:: WITH_FUTURE_DATES = True
 
@@ -288,12 +325,6 @@ Basic settings
 
    A list of default Pygments settings for your reStructuredText code blocks.
    See :ref:`internal_pygments_options` for a list of supported options.
-
-.. data:: SLUGIFY_SOURCE = 'title'
-
-   Specifies where you want the slug to be automatically generated from. Can be
-   set to ``title`` to use the 'Title:' metadata tag or ``basename`` to use the
-   article's file name when creating the slug.
 
 .. data:: CACHE_CONTENT = False
 
@@ -342,6 +373,7 @@ Basic settings
 
    The IP to which to bind the HTTP server.
 
+.. _url-settings:
 
 URL settings
 ============
@@ -361,6 +393,12 @@ variables allow you to place your articles in a location such as
 ``{slug}/index.html`` and link to them as ``{slug}`` for clean URLs (see
 example below). These settings give you the flexibility to place your articles
 and pages anywhere you want.
+
+.. note::
+    If a ``*_SAVE_AS`` setting contains a parent directory that doesn't match
+    the parent directory inside the corresponding ``*_URL`` setting, this may
+    cause Pelican to generate unexpected URLs in a few cases, such as when
+    using the ``{attach}`` syntax.
 
 If you don't want that flexibility and instead prefer that your generated
 output paths mirror your source content's filesystem path hierarchy, try the
@@ -583,6 +621,23 @@ corresponding ``*_URL`` setting as string, while others hard-code them:
 ``'archives.html'``, ``'authors.html'``, ``'categories.html'``,
 ``'tags.html'``.
 
+.. data:: SLUGIFY_SOURCE = 'title'
+
+   Specifies from where you want the slug to be automatically generated. Can be
+   set to ``title`` to use the "Title:" metadata tag or ``basename`` to use the
+   article's file name when creating the slug.
+
+.. data:: SLUGIFY_USE_UNICODE = False
+
+   Allow Unicode characters in slugs. Set ``True`` to keep Unicode characters
+   in auto-generated slugs. Otherwise, Unicode characters will be replaced
+   with ASCII equivalents.
+
+.. data:: SLUGIFY_PRESERVE_CASE = False
+
+   Preserve uppercase characters in slugs. Set ``True`` to keep uppercase
+   characters from ``SLUGIFY_SOURCE`` as-is.
+
 .. data:: SLUG_REGEX_SUBSTITUTIONS = [
         (r'[^\\w\\s-]', ''),  # remove non-alphabetical/whitespace/'-' chars
         (r'(?u)\\A\\s*', ''),  # strip leading whitespace
@@ -693,8 +748,8 @@ Time and Date
 
    .. parsed-literal::
 
-       LOCALE = ('usa', 'jpn',      # On Windows
-                 'en_US', 'ja_JP'   # On Unix/Linux
+      LOCALE = ('usa', 'jpn',      # On Windows
+                'en_US', 'ja_JP'   # On Unix/Linux
       )
 
    For a list of available locales refer to `locales on Windows`_  or on
@@ -704,7 +759,11 @@ Time and Date
 
 .. [#] Default is the system locale.
 
-.. _locales on Windows: http://msdn.microsoft.com/en-us/library/cdax410z%28VS.71%29.aspx
+.. _Jinja custom filters documentation: https://jinja.palletsprojects.com/en/master/api/#custom-filters
+.. _Jinja global namespace documentation: https://jinja.palletsprojects.com/en/master/api/#the-global-namespace
+.. _Jinja custom tests documentation: https://jinja.palletsprojects.com/en/master/api/#custom-tests
+
+.. _locales on Windows: https://www.microsoft.com/en-us/download/details.aspx?id=55979
 
 .. _locale(1): https://linux.die.net/man/1/locale
 
@@ -717,7 +776,7 @@ Template pages
 .. data:: TEMPLATE_PAGES = None
 
    A mapping containing template pages that will be rendered with the blog
-   entries. See :ref:`template_pages`.
+   entries.
 
    If you want to generate custom pages besides your blog entries, you can
    point any Jinja2 template file with a path pointing to the file and the
@@ -1003,7 +1062,7 @@ subsequent pages at ``.../page/2/`` etc, you could set ``PAGINATION_PATTERNS``
 as follows::
 
   PAGINATION_PATTERNS = (
-      (1, '{url}', '{save_as}',
+      (1, '{url}', '{save_as}'),
       (2, '{base_name}/page/{number}/', '{base_name}/page/{number}/index.html'),
   )
 
@@ -1082,6 +1141,7 @@ Ordering content
    will sort pages by their basename.
 
 
+.. _settings/themes:
 
 Themes
 ======
@@ -1094,7 +1154,7 @@ themes.
 
    Theme to use to produce the output. Can be a relative or absolute path to a
    theme folder, or the name of a default theme or a theme installed via
-   ``pelican-themes`` (see below).
+   :doc:`pelican-themes` (see below).
 
 .. data:: THEME_STATIC_DIR = 'theme'
 
@@ -1186,20 +1246,6 @@ Feel free to use them in your themes as well.
 
    A list of tuples (Title, URL) for additional menu items to appear at the
    beginning of the main menu.
-
-.. data:: PIWIK_URL
-
-   URL to your Piwik server - without 'http://' at the beginning.
-
-.. data:: PIWIK_SSL_URL
-
-   If the SSL-URL differs from the normal Piwik-URL you have to include this
-   setting too. (optional)
-
-.. data:: PIWIK_SITE_ID
-
-   ID for the monitored website. You can find the ID in the Piwik admin
-   interface > Settings > Websites.
 
 .. data:: LINKS
 
@@ -1351,6 +1397,5 @@ Example settings
     :language: python
 
 
-.. _Jinja custom filters documentation: http://jinja.pocoo.org/docs/api/#custom-filters
-.. _Jinja Environment documentation: http://jinja.pocoo.org/docs/dev/api/#jinja2.Environment
+.. _Jinja Environment documentation: https://jinja.palletsprojects.com/en/master/api/#jinja2.Environment
 .. _Docutils Configuration: http://docutils.sourceforge.net/docs/user/config.html

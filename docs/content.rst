@@ -48,9 +48,9 @@ Pelican implements an extension to reStructuredText to enable support for the
 
     This will be turned into :abbr:`HTML (HyperText Markup Language)`.
 
-You can also use Markdown syntax (with a file ending in ``.md``,
-``.markdown``, ``.mkd``, or ``.mdown``). Markdown generation requires that you
-first explicitly install the ``Markdown`` package, which can be done via ``pip
+You can also use Markdown syntax (with a file ending in ``.md``, ``.markdown``,
+``.mkd``, or ``.mdown``). Markdown generation requires that you first
+explicitly install the Python-Markdown_ package, which can be done via ``pip
 install Markdown``.
 
 Pelican also supports `Markdown Extensions`_, which might have to be installed
@@ -88,7 +88,7 @@ contains a list of reserved metadata keywords:
 ``authors``     Content authors, when there are multiple
 ``summary``     Brief description of content for index pages
 ``lang``        Content language ID (``en``, ``fr``, etc.)
-``translation`` Is content is a translation of another (``true`` or ``false``)
+``translation`` If content is a translation of another (``true`` or ``false``)
 ``status``      Content status: ``draft``, ``hidden``, or ``published``
 ``template``    Name of template to use to generate content (without extension)
 ``save_as``     Save content to this relative file path
@@ -370,6 +370,10 @@ of ``{attach}``, and letting the file's location be determined by the project's
 ``STATIC_SAVE_AS`` and ``STATIC_URL`` settings. (Per-file ``save_as`` and
 ``url`` overrides can still be set in ``EXTRA_PATH_METADATA``.)
 
+.. note::
+    When using ``{attach}``, any parent directory in ``*_URL`` / ``*_SAVE_AS``
+    settings should match each other. See also: :ref:`url-settings`
+
 Linking to authors, categories, index and tags
 ----------------------------------------------
 
@@ -524,7 +528,7 @@ indenting both the identifier and the code::
         print("The path-less shebang syntax *will* show line numbers.")
 
 The specified identifier (e.g. ``python``, ``ruby``) should be one that
-appears on the `list of available lexers <http://pygments.org/docs/lexers/>`_.
+appears on the `list of available lexers <https://pygments.org/docs/lexers/>`_.
 
 When using reStructuredText the following options are available in the
 code-block directive:
@@ -565,7 +569,7 @@ tagurlformat    string        format for the ctag links.
 
 Note that, depending on the version, your Pygments module might not have
 all of these options available. Refer to the *HtmlFormatter* section of the
-`Pygments documentation <http://pygments.org/docs/formatters/>`_ for more
+`Pygments documentation <https://pygments.org/docs/formatters/>`_ for more
 details on each of the options.
 
 For example, the following code block enables line numbers, starting at 153,
@@ -611,8 +615,9 @@ To publish a post when the default status is ``draft``, update the post's
 metadata to include ``Status: published``.
 
 .. _W3C ISO 8601: https://www.w3.org/TR/NOTE-datetime
-.. _AsciiDoc: http://www.methods.co.nz/asciidoc/
+.. _AsciiDoc: https://www.methods.co.nz/asciidoc/
 .. _pelican-plugins: https://github.com/getpelican/pelican-plugins
+.. _Python-Markdown: https://github.com/Python-Markdown/markdown
 .. _Markdown Extensions: https://python-markdown.github.io/extensions/
 .. _CodeHilite extension: https://python-markdown.github.io/extensions/code_hilite/#syntax
 .. _i18n_subsites plugin: https://github.com/getpelican/pelican-plugins/tree/master/i18n_subsites

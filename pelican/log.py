@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
-
 import logging
 import os
 import sys
 from collections import defaultdict
+from collections.abc import Mapping
 
 __all__ = [
     'init'
@@ -20,9 +19,10 @@ class BaseFormatter(logging.Formatter):
         record.__dict__['customlevelname'] = customlevel
         # format multiline messages 'nicely' to make it clear they are together
         record.msg = record.msg.replace('\n', '\n  | ')
-        record.args = tuple(arg.replace('\n', '\n  | ') if
-                            isinstance(arg, str) else
-                            arg for arg in record.args)
+        if not isinstance(record.args, Mapping):
+            record.args = tuple(arg.replace('\n', '\n  | ') if
+                                isinstance(arg, str) else
+                                arg for arg in record.args)
         return super().format(record)
 
     def formatException(self, ei):
@@ -110,11 +110,13 @@ class LimitFilter(logging.Filter):
         else:
             self._raised_messages.add(message_key)
 
-        # ignore LOG_FILTER records by templates when "debug" isn't enabled
+        # ignore LOG_FILTER records by templates or messages
+        # when "debug" isn't enabled
         logger_level = logging.getLogger().getEffectiveLevel()
         if logger_level > logging.DEBUG:
-            ignore_key = (record.levelno, record.msg)
-            if ignore_key in self._ignore:
+            template_key = (record.levelno, record.msg)
+            message_key = (record.levelno, record.getMessage())
+            if (template_key in self._ignore or message_key in self._ignore):
                 return False
 
         # check if we went over threshold
@@ -163,6 +165,8 @@ class FatalLogger(LimitLogger):
 
 
 logging.setLoggerClass(FatalLogger)
+# force root logger to be of our preferred class
+logging.getLogger().__class__ = FatalLogger
 
 
 def supports_color():

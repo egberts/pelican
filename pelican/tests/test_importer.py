@@ -1,8 +1,7 @@
-﻿# -*- coding: utf-8 -*-
-
 import locale
 import os
 import re
+from posixpath import join as posix_join
 
 from pelican.settings import DEFAULT_CONFIG
 from pelican.tests.support import (mute, skipIfNoExecutable, temporary_folder,
@@ -41,7 +40,7 @@ class TestBloggerXmlImporter(unittest.TestCase):
 
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.posts = blogger2fields(BLOGGER_XML_SAMPLE)
 
     def tearDown(self):
@@ -90,7 +89,7 @@ class TestWordpressXmlImporter(unittest.TestCase):
 
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.posts = wp2fields(WORDPRESS_XML_SAMPLE)
         self.custposts = wp2fields(WORDPRESS_XML_SAMPLE, True)
 
@@ -138,7 +137,7 @@ class TestWordpressXmlImporter(unittest.TestCase):
         index = 0
         for post in test_posts:
             name = post[2]
-            category = slugify(post[5][0], regex_subs=subs)
+            category = slugify(post[5][0], regex_subs=subs, preserve_case=True)
             name += '.md'
             filename = os.path.join(category, name)
             out_name = fnames[index]
@@ -215,7 +214,7 @@ class TestWordpressXmlImporter(unittest.TestCase):
         for post in test_posts:
             name = post[2]
             kind = post[8]
-            category = slugify(post[5][0], regex_subs=subs)
+            category = slugify(post[5][0], regex_subs=subs, preserve_case=True)
             name += '.md'
             filename = os.path.join(kind, category, name)
             out_name = fnames[index]
@@ -282,9 +281,9 @@ class TestWordpressXmlImporter(unittest.TestCase):
 
     def test_decode_wp_content(self):
         """ Check that we can decode a wordpress content string."""
-        with open(WORDPRESS_ENCODED_CONTENT_SAMPLE, 'r') as encoded_file:
+        with open(WORDPRESS_ENCODED_CONTENT_SAMPLE) as encoded_file:
             encoded_content = encoded_file.read()
-            with open(WORDPRESS_DECODED_CONTENT_SAMPLE, 'r') as decoded_file:
+            with open(WORDPRESS_DECODED_CONTENT_SAMPLE) as decoded_file:
                 decoded_content = decoded_file.read()
                 self.assertEqual(
                     decode_wp_content(encoded_content, br=False),
@@ -405,7 +404,7 @@ class TestBuildHeader(unittest.TestCase):
 class TestWordpressXMLAttachements(unittest.TestCase):
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, str('C'))
+        locale.setlocale(locale.LC_ALL, 'C')
         self.attachments = get_attachments(WORDPRESS_XML_SAMPLE)
 
     def tearDown(self):
@@ -450,5 +449,5 @@ class TestWordpressXMLAttachements(unittest.TestCase):
             self.assertEqual(1, len(locations))
             directory = locations[0]
             self.assertTrue(
-                directory.endswith(os.path.join('content', 'article.rst')),
+                directory.endswith(posix_join('content', 'article.rst')),
                 directory)

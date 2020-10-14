@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import fnmatch
 import locale
@@ -29,8 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 def sanitised_join(base_directory, *parts):
-    joined = os.path.abspath(os.path.join(base_directory, *parts))
-    if not joined.startswith(os.path.abspath(base_directory)):
+    joined = posixize_path(
+        os.path.abspath(os.path.join(base_directory, *parts)))
+    base = posixize_path(os.path.abspath(base_directory))
+    if not joined.startswith(base):
         raise RuntimeError(
             "Attempted to break out of output directory to {}".format(
                 joined
@@ -99,7 +99,7 @@ class SafeDatetime(datetime.datetime):
             return super().strftime(fmt)
 
 
-class DateFormatter(object):
+class DateFormatter:
     '''A date formatter object used as a jinja filter
 
     Uses the `strftime` implementation and makes sure jinja uses the locale
@@ -125,7 +125,7 @@ class DateFormatter(object):
         return formatted
 
 
-class memoized(object):
+class memoized:
     """Function decorator to cache return values.
 
     If called later with the same arguments, the cached value is returned
@@ -209,7 +209,7 @@ def get_date(string):
     try:
         return dateutil.parser.parse(string, default=default)
     except (TypeError, ValueError):
-        raise ValueError('{0!r} is not a valid date'.format(string))
+        raise ValueError('{!r} is not a valid date'.format(string))
 
 
 @contextmanager
@@ -222,7 +222,7 @@ def pelican_open(filename, mode='r', strip_crs=(sys.platform == 'win32')):
     yield content
 
 
-def slugify(value, regex_subs=()):
+def slugify(value, regex_subs=(), preserve_case=False, use_unicode=False):
     """
     Normalizes string, converts to lowercase, removes non-alpha characters,
     and converts spaces to hyphens.
@@ -230,27 +230,36 @@ def slugify(value, regex_subs=()):
     Took from Django sources.
     """
 
-    # TODO Maybe steal again from current Django 1.5dev
-    value = Markup(value).striptags()
-    # value must be unicode per se
     import unicodedata
-    from unidecode import unidecode
-    value = unidecode(value)
-    if isinstance(value, bytes):
-        value = value.decode('ascii')
-    # still unicode
-    value = unicodedata.normalize('NFKD', value)
+    import unidecode
 
+    def normalize_unicode(text):
+        # normalize text by compatibility composition
+        # see: https://en.wikipedia.org/wiki/Unicode_equivalence
+        return unicodedata.normalize('NFKC', text)
+
+    # strip tags from value
+    value = Markup(value).striptags()
+
+    # normalization
+    value = normalize_unicode(value)
+
+    if not use_unicode:
+        # ASCII-fy
+        value = unidecode.unidecode(value)
+
+    # perform regex substitutions
     for src, dst in regex_subs:
-        value = re.sub(src, dst, value, flags=re.IGNORECASE)
+        value = re.sub(
+            normalize_unicode(src),
+            normalize_unicode(dst),
+            value,
+            flags=re.IGNORECASE)
 
-    # convert to lowercase
-    value = value.lower()
+    if not preserve_case:
+        value = value.lower()
 
-    # we want only ASCII chars
-    value = value.encode('ascii', 'ignore').strip()
-    # but Pelican should generally use only unicode
-    return value.decode('ascii')
+    return value.strip()
 
 
 def copy(source, destination, ignores=None):
@@ -384,10 +393,9 @@ def get_relative_path(path):
 
 def path_to_url(path):
     """Return the URL corresponding to a given path."""
-    if os.sep == '/':
-        return path
-    else:
-        return '/'.join(split_all(path))
+    if path is not None:
+        path = posixize_path(path)
+    return path
 
 
 def posixize_path(rel_path):
@@ -609,11 +617,11 @@ def process_translations(content_list, translation_id=None):
         content_list.sort(key=attrgetter(*translation_id))
     except TypeError:
         raise TypeError('Cannot unpack {}, \'translation_id\' must be falsy, a'
-                        'string or a collection of strings'
+                        ' string or a collection of strings'
                         .format(translation_id))
     except AttributeError:
-        raise AttributeError('Cannot use {} as \'translation_id\', there'
-                             'appear to be items without these metadata'
+        raise AttributeError('Cannot use {} as \'translation_id\', there '
+                             'appear to be items without these metadata '
                              'attributes'.format(translation_id))
 
     for id_vals, items in groupby(content_list, attrgetter(*translation_id)):
@@ -637,7 +645,7 @@ def get_original_items(items, with_str):
     def _warn_source_paths(msg, items, *extra):
         args = [len(items)]
         args.extend(extra)
-        args.extend((x.source_path for x in items))
+        args.extend(x.source_path for x in items)
         logger.warning('{}: {}'.format(msg, '\n%s' * len(items)), *args)
 
     # warn if several items have the same lang
@@ -721,66 +729,173 @@ def order_content(content_list, order_by='slug'):
                                 })
         else:
             logger.warning(
-                'Invalid *_ORDER_BY setting (%s).'
+                'Invalid *_ORDER_BY setting (%s). '
                 'Valid options are strings and functions.', order_by)
 
     return content_list
 
 
-def folder_watcher(path, extensions, ignores=[]):
-    '''Generator for monitoring a folder for modifications.
+class FileSystemWatcher:
+    def __init__(self, settings_file, reader_class, settings=None):
+        self.watchers = {
+            'settings': FileSystemWatcher.file_watcher(settings_file)
+        }
 
-    Returns a boolean indicating if files are changed since last check.
-    Returns None if there are no matching files in the folder'''
+        self.settings = None
+        self.reader_class = reader_class
+        self._extensions = None
+        self._content_path = None
+        self._theme_path = None
+        self._ignore_files = None
 
-    def file_times(path):
-        '''Return `mtime` for each file in path'''
+        if settings is not None:
+            self.update_watchers(settings)
 
-        for root, dirs, files in os.walk(path, followlinks=True):
-            dirs[:] = [x for x in dirs if not x.startswith(os.curdir)]
+    def update_watchers(self, settings):
+        new_extensions = set(self.reader_class(settings).extensions)
+        new_content_path = settings.get('PATH', '')
+        new_theme_path = settings.get('THEME', '')
+        new_ignore_files = set(settings.get('IGNORE_FILES', []))
 
-            for f in files:
-                valid_extension = f.endswith(tuple(extensions))
-                file_ignored = any(
-                    fnmatch.fnmatch(f, ignore) for ignore in ignores
-                )
-                if valid_extension and not file_ignored:
-                    try:
-                        yield os.stat(os.path.join(root, f)).st_mtime
-                    except OSError as e:
-                        logger.warning('Caught Exception: %s', e)
+        extensions_changed = new_extensions != self._extensions
+        content_changed = new_content_path != self._content_path
+        theme_changed = new_theme_path != self._theme_path
+        ignore_changed = new_ignore_files != self._ignore_files
 
-    LAST_MTIME = 0
-    while True:
-        try:
-            mtime = max(file_times(path))
-            if mtime > LAST_MTIME:
-                LAST_MTIME = mtime
-                yield True
-        except ValueError:
-            yield None
+        # Refresh content watcher if related settings changed
+        if extensions_changed or content_changed or ignore_changed:
+            self.add_watcher('content',
+                             new_content_path,
+                             new_extensions,
+                             new_ignore_files)
+
+        # Refresh theme watcher if related settings changed
+        if theme_changed or ignore_changed:
+            self.add_watcher('theme',
+                             new_theme_path,
+                             [''],
+                             new_ignore_files)
+
+        # Watch STATIC_PATHS
+        old_static_watchers = set(key
+                                  for key in self.watchers
+                                  if key.startswith('[static]'))
+
+        for path in settings.get('STATIC_PATHS', []):
+            key = '[static]{}'.format(path)
+            if ignore_changed or (key not in self.watchers):
+                self.add_watcher(
+                    key,
+                    os.path.join(new_content_path, path),
+                    [''],
+                    new_ignore_files)
+            if key in old_static_watchers:
+                old_static_watchers.remove(key)
+
+        # cleanup removed static watchers
+        for key in old_static_watchers:
+            del self.watchers[key]
+
+        # update values
+        self.settings = settings
+        self._extensions = new_extensions
+        self._content_path = new_content_path
+        self._theme_path = new_theme_path
+        self._ignore_files = new_ignore_files
+
+    def check(self):
+        '''return a key:watcher_status dict for all watchers'''
+        result = {key: next(watcher) for key, watcher in self.watchers.items()}
+
+        # Various warnings
+        if result.get('content') is None:
+            reader_descs = sorted(
+                {
+                    '%s (%s)' % (type(r).__name__, ', '.join(r.file_extensions))
+                    for r in self.reader_class(self.settings).readers.values()
+                    if r.enabled
+                }
+            )
+            logger.warning(
+                    'No valid files found in content for the active readers:\n'
+                    + '\n'.join(reader_descs))
+
+        if result.get('theme') is None:
+            logger.warning('Empty theme folder. Using `basic` theme.')
+
+        return result
+
+    def add_watcher(self, key, path, extensions=[''], ignores=[]):
+        watcher = self.get_watcher(path, extensions, ignores)
+        if watcher is not None:
+            self.watchers[key] = watcher
+
+    def get_watcher(self, path, extensions=[''], ignores=[]):
+        '''return a watcher depending on path type (file or folder)'''
+        if not os.path.exists(path):
+            logger.warning("Watched path does not exist: %s", path)
+            return None
+
+        if os.path.isdir(path):
+            return self.folder_watcher(path, extensions, ignores)
         else:
-            yield False
+            return self.file_watcher(path)
 
+    @staticmethod
+    def folder_watcher(path, extensions, ignores=[]):
+        '''Generator for monitoring a folder for modifications.
 
-def file_watcher(path):
-    '''Generator for monitoring a file for modifications'''
-    LAST_MTIME = 0
-    while True:
-        if path:
+        Returns a boolean indicating if files are changed since last check.
+        Returns None if there are no matching files in the folder'''
+
+        def file_times(path):
+            '''Return `mtime` for each file in path'''
+
+            for root, dirs, files in os.walk(path, followlinks=True):
+                dirs[:] = [x for x in dirs if not x.startswith(os.curdir)]
+
+                for f in files:
+                    valid_extension = f.endswith(tuple(extensions))
+                    file_ignored = any(
+                        fnmatch.fnmatch(f, ignore) for ignore in ignores
+                    )
+                    if valid_extension and not file_ignored:
+                        try:
+                            yield os.stat(os.path.join(root, f)).st_mtime
+                        except OSError as e:
+                            logger.warning('Caught Exception: %s', e)
+
+        LAST_MTIME = 0
+        while True:
             try:
-                mtime = os.stat(path).st_mtime
-            except OSError as e:
-                logger.warning('Caught Exception: %s', e)
-                continue
-
-            if mtime > LAST_MTIME:
-                LAST_MTIME = mtime
-                yield True
+                mtime = max(file_times(path))
+                if mtime > LAST_MTIME:
+                    LAST_MTIME = mtime
+                    yield True
+            except ValueError:
+                yield None
             else:
                 yield False
-        else:
-            yield None
+
+    @staticmethod
+    def file_watcher(path):
+        '''Generator for monitoring a file for modifications'''
+        LAST_MTIME = 0
+        while True:
+            if path:
+                try:
+                    mtime = os.stat(path).st_mtime
+                except OSError as e:
+                    logger.warning('Caught Exception: %s', e)
+                    continue
+
+                if mtime > LAST_MTIME:
+                    LAST_MTIME = mtime
+                    yield True
+                else:
+                    yield False
+            else:
+                yield None
 
 
 def set_date_tzinfo(d, tz_name=None):

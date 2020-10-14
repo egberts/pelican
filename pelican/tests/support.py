@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import locale
 import logging
 import os
@@ -134,7 +132,7 @@ def skipIfNoExecutable(executable):
             res = None
 
     if res is None:
-        return unittest.skip('{0} executable not found'.format(executable))
+        return unittest.skip('{} executable not found'.format(executable))
 
     return lambda func: func
 
@@ -160,6 +158,19 @@ def locale_available(locale_):
     else:
         locale.setlocale(locale.LC_TIME, old_locale)
         return True
+
+
+def can_symlink():
+    res = True
+    try:
+        with temporary_folder() as f:
+            os.symlink(
+                f,
+                os.path.join(f, 'symlink')
+            )
+    except OSError:
+        res = False
+    return res
 
 
 def get_settings(**kwargs):
@@ -190,11 +201,20 @@ class LogCountHandler(BufferingHandler):
 
     def count_logs(self, msg=None, level=None):
         return len([
-            l
-            for l
+            rec
+            for rec
             in self.buffer
-            if (msg is None or re.match(msg, l.getMessage())) and
-               (level is None or l.levelno == level)
+            if (msg is None or re.match(msg, rec.getMessage())) and
+               (level is None or rec.levelno == level)
+        ])
+
+    def count_formatted_logs(self, msg=None, level=None):
+        return len([
+            rec
+            for rec
+            in self.buffer
+            if (msg is None or re.search(msg, self.format(rec))) and
+               (level is None or rec.levelno == level)
         ])
 
 

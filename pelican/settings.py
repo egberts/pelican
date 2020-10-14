@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
-
 import copy
 import importlib.util
 import inspect
+import json
 import locale
 import logging
 import os
 import re
 from os.path import isabs
-from posixpath import join as posix_join
 
 from pelican.log import LimitFilter
 
@@ -38,11 +36,11 @@ DEFAULT_CONFIG = {
     'STATIC_EXCLUDE_SOURCES': True,
     'THEME_STATIC_DIR': 'theme',
     'THEME_STATIC_PATHS': ['static', ],
-    'FEED_ALL_ATOM': posix_join('feeds', 'all.atom.xml'),
-    'CATEGORY_FEED_ATOM': posix_join('feeds', '{slug}.atom.xml'),
-    'AUTHOR_FEED_ATOM': posix_join('feeds', '{slug}.atom.xml'),
-    'AUTHOR_FEED_RSS': posix_join('feeds', '{slug}.rss.xml'),
-    'TRANSLATION_FEED_ATOM': posix_join('feeds', 'all-{lang}.atom.xml'),
+    'FEED_ALL_ATOM': 'feeds/all.atom.xml',
+    'CATEGORY_FEED_ATOM': 'feeds/{slug}.atom.xml',
+    'AUTHOR_FEED_ATOM': 'feeds/{slug}.atom.xml',
+    'AUTHOR_FEED_RSS': 'feeds/{slug}.rss.xml',
+    'TRANSLATION_FEED_ATOM': 'feeds/all-{lang}.atom.xml',
     'FEED_MAX_ITEMS': '',
     'RSS_FEED_SUMMARY_ONLY': True,
     'SITEURL': '',
@@ -67,29 +65,28 @@ DEFAULT_CONFIG = {
     'ARTICLE_LANG_URL': '{slug}-{lang}.html',
     'ARTICLE_LANG_SAVE_AS': '{slug}-{lang}.html',
     'DRAFT_URL': 'drafts/{slug}.html',
-    'DRAFT_SAVE_AS': posix_join('drafts', '{slug}.html'),
+    'DRAFT_SAVE_AS': 'drafts/{slug}.html',
     'DRAFT_LANG_URL': 'drafts/{slug}-{lang}.html',
-    'DRAFT_LANG_SAVE_AS': posix_join('drafts', '{slug}-{lang}.html'),
+    'DRAFT_LANG_SAVE_AS': 'drafts/{slug}-{lang}.html',
     'PAGE_URL': 'pages/{slug}.html',
-    'PAGE_SAVE_AS': posix_join('pages', '{slug}.html'),
+    'PAGE_SAVE_AS': 'pages/{slug}.html',
     'PAGE_ORDER_BY': 'basename',
     'PAGE_LANG_URL': 'pages/{slug}-{lang}.html',
-    'PAGE_LANG_SAVE_AS': posix_join('pages', '{slug}-{lang}.html'),
+    'PAGE_LANG_SAVE_AS': 'pages/{slug}-{lang}.html',
     'DRAFT_PAGE_URL': 'drafts/pages/{slug}.html',
-    'DRAFT_PAGE_SAVE_AS': posix_join('drafts', 'pages', '{slug}.html'),
+    'DRAFT_PAGE_SAVE_AS': 'drafts/pages/{slug}.html',
     'DRAFT_PAGE_LANG_URL': 'drafts/pages/{slug}-{lang}.html',
-    'DRAFT_PAGE_LANG_SAVE_AS': posix_join('drafts', 'pages',
-                                          '{slug}-{lang}.html'),
+    'DRAFT_PAGE_LANG_SAVE_AS': 'drafts/pages/{slug}-{lang}.html',
     'STATIC_URL': '{path}',
     'STATIC_SAVE_AS': '{path}',
     'STATIC_CREATE_LINKS': False,
     'STATIC_CHECK_IF_MODIFIED': False,
     'CATEGORY_URL': 'category/{slug}.html',
-    'CATEGORY_SAVE_AS': posix_join('category', '{slug}.html'),
+    'CATEGORY_SAVE_AS': 'category/{slug}.html',
     'TAG_URL': 'tag/{slug}.html',
-    'TAG_SAVE_AS': posix_join('tag', '{slug}.html'),
+    'TAG_SAVE_AS': 'tag/{slug}.html',
     'AUTHOR_URL': 'author/{slug}.html',
-    'AUTHOR_SAVE_AS': posix_join('author', '{slug}.html'),
+    'AUTHOR_SAVE_AS': 'author/{slug}.html',
     'PAGINATION_PATTERNS': [
         (1, '{name}{extension}', '{name}{extension}'),
         (2, '{name}{number}{extension}', '{name}{number}{extension}'),
@@ -120,6 +117,8 @@ DEFAULT_CONFIG = {
         'output_format': 'html5',
     },
     'JINJA_FILTERS': {},
+    'JINJA_GLOBALS': {},
+    'JINJA_TESTS': {},
     'JINJA_ENVIRONMENT': {
         'trim_blocks': True,
         'lstrip_blocks': True,
@@ -136,6 +135,8 @@ DEFAULT_CONFIG = {
     'ARTICLE_PERMALINK_STRUCTURE': '',
     'TYPOGRIFY': False,
     'TYPOGRIFY_IGNORE_TAGS': [],
+    'TYPOGRIFY_DASHES': 'default',
+    'SUMMARY_END_SUFFIX': '…',
     'SUMMARY_MAX_LENGTH': 50,
     'PLUGIN_PATHS': [],
     'PLUGINS': None,
@@ -151,6 +152,8 @@ DEFAULT_CONFIG = {
     ],
     'INTRASITE_LINK_REGEX': '[{|](?P<what>.*?)[|}]',
     'SLUGIFY_SOURCE': 'title',
+    'SLUGIFY_USE_UNICODE': False,
+    'SLUGIFY_PRESERVE_CASE': False,
     'CACHE_CONTENT': False,
     'CONTENT_CACHING_LAYER': 'reader',
     'CACHE_PATH': 'cache',
@@ -604,7 +607,7 @@ def configure_settings(settings):
         logger.warning(
             'No timezone information specified in the settings. Assuming'
             ' your timezone is UTC for feed generation. Check '
-            'http://docs.getpelican.com/en/latest/settings.html#timezone '
+            'https://docs.getpelican.com/en/latest/settings.html#TIMEZONE '
             'for more information')
 
     # fix up pagination rules
@@ -656,3 +659,25 @@ def configure_settings(settings):
             continue            # setting not specified, nothing to do
 
     return settings
+
+
+def coerce_overrides(overrides):
+    if overrides is None:
+        return {}
+    coerced = {}
+    types_to_cast = {int, str, bool}
+    for k, v in overrides.items():
+        if k not in DEFAULT_CONFIG:
+            logger.warning('Override for unknown setting %s, ignoring', k)
+            continue
+        setting_type = type(DEFAULT_CONFIG[k])
+        if setting_type not in types_to_cast:
+            coerced[k] = json.loads(v)
+        else:
+            try:
+                coerced[k] = setting_type(v)
+            except ValueError:
+                logger.debug('ValueError for %s override with %s, try to '
+                             'load as json', k, v)
+                coerced[k] = json.loads(v)
+    return coerced

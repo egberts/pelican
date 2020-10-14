@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
-
 import logging
 import os
+from posixpath import join as posix_join
 from urllib.parse import urljoin
 
 from feedgenerator import Atom1Feed, Rss201rev2Feed, get_tag_uri
@@ -16,7 +15,7 @@ from pelican.utils import (get_relative_path, is_selected_for_writing,
 logger = logging.getLogger(__name__)
 
 
-class Writer(object):
+class Writer:
 
     def __init__(self, output_path, settings=None):
         self.output_path = output_path
@@ -27,7 +26,7 @@ class Writer(object):
 
         # See Content._link_replacer for details
         if self.settings['RELATIVE_URLS']:
-            self.urljoiner = os.path.join
+            self.urljoiner = posix_join
         else:
             self.urljoiner = lambda base, url: urljoin(
                 base if base.endswith('/') else base + '/', url)

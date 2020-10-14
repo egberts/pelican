@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import argparse
 import logging
@@ -40,7 +39,7 @@ def decode_wp_content(content, br=True):
             if start == -1:
                 content = content + pre_part
                 continue
-            name = "<pre wp-pre-tag-{0}></pre>".format(pre_index)
+            name = "<pre wp-pre-tag-{}></pre>".format(pre_index)
             pre_tags[name] = pre_part[start:] + "</pre>"
             content = content + pre_part[0:start] + name
             pre_index += 1
@@ -154,7 +153,7 @@ def wp2fields(xml, wp_custpost=False):
 
             content = item.find('encoded').string
             raw_date = item.find('post_date').string
-            if raw_date == u'0000-00-00 00:00:00':
+            if raw_date == '0000-00-00 00:00:00':
                 date = None
             else:
                 date_object = SafeDatetime.strptime(
@@ -258,7 +257,7 @@ def dc2fields(file):
     category_list = {}
     posts = []
 
-    with open(file, 'r', encoding='utf-8') as f:
+    with open(file, encoding='utf-8') as f:
 
         for line in f:
             # remove final \n
@@ -394,7 +393,7 @@ def posterous2fields(api_token, email, password):
 
     def get_posterous_posts(api_token, email, password, page=1):
         base64string = base64.encodestring(
-            ("%s:%s" % (email, password)).encode('utf-8')).replace('\n', '')
+            ("{}:{}".format(email, password)).encode('utf-8')).replace('\n', '')
         url = ("http://posterous.com/api/v2/users/me/sites/primary/"
                "posts?api_token=%s&page=%d") % (api_token, page)
         request = urllib_request.Request(url)
@@ -437,7 +436,7 @@ def tumblr2fields(api_key, blogname):
     import urllib.request as urllib_request
 
     def get_tumblr_posts(api_key, blogname, offset=0):
-        url = ("http://api.tumblr.com/v2/blog/%s.tumblr.com/"
+        url = ("https://api.tumblr.com/v2/blog/%s.tumblr.com/"
                "posts?api_key=%s&offset=%d&filter=raw") % (
             blogname, api_key, offset)
         request = urllib_request.Request(url)
@@ -553,11 +552,34 @@ def build_header(title, date, author, categories, tags, slug,
 
     from docutils.utils import column_width
 
-    header = '%s\n%s\n' % (title, '#' * column_width(title))
+    header = '{}\n{}\n'.format(title, '#' * column_width(title))
     if date:
         header += ':date: %s\n' % date
     if author:
         header += ':author: %s\n' % author
+    if categories:
+        header += ':category: %s\n' % ', '.join(categories)
+    if tags:
+        header += ':tags: %s\n' % ', '.join(tags)
+    if slug:
+        header += ':slug: %s\n' % slug
+    if status:
+        header += ':status: %s\n' % status
+    if attachments:
+        header += ':attachments: %s\n' % ', '.join(attachments)
+    header += '\n'
+    return header
+
+
+def build_asciidoc_header(title, date, author, categories, tags, slug,
+                          status=None, attachments=None):
+    """Build a header from a list of fields"""
+
+    header = '= %s\n' % title
+    if author:
+        header += '%s\n' % author
+        if date:
+            header += '%s\n' % date
     if categories:
         header += ':category: %s\n' % ', '.join(categories)
     if tags:
@@ -595,7 +617,9 @@ def build_markdown_header(title, date, author, categories, tags,
 
 
 def get_ext(out_markup, in_markup='html'):
-    if in_markup == 'markdown' or out_markup == 'markdown':
+    if out_markup == 'asciidoc':
+        ext = '.adoc'
+    elif in_markup == 'markdown' or out_markup == 'markdown':
         ext = '.md'
     else:
         ext = '.rst'
@@ -607,7 +631,7 @@ def get_out_filename(output_path, filename, ext, kind,
     filename = os.path.basename(filename)
 
     # Enforce filename restrictions for various filesystems at once; see
-    # http://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
+    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
     # we do not need to filter words because an extension will be appended
     filename = re.sub(r'[<>:"/\\|?*^% ]', '-', filename)  # invalid chars
     filename = filename.lstrip('.')  # should not start with a dot
@@ -634,7 +658,8 @@ def get_out_filename(output_path, filename, ext, kind,
             typename = ''
             kind = 'article'
         if dircat and (len(categories) > 0):
-            catname = slugify(categories[0], regex_subs=slug_subs)
+            catname = slugify(
+                categories[0], regex_subs=slug_subs, preserve_case=True)
         else:
             catname = ''
         out_filename = os.path.join(output_path, typename,
@@ -643,7 +668,8 @@ def get_out_filename(output_path, filename, ext, kind,
             os.makedirs(os.path.join(output_path, typename, catname))
     # option to put files in directories with categories names
     elif dircat and (len(categories) > 0):
-        catname = slugify(categories[0], regex_subs=slug_subs)
+        catname = slugify(
+            categories[0], regex_subs=slug_subs, preserve_case=True)
         out_filename = os.path.join(output_path, catname, filename + ext)
         if not os.path.isdir(os.path.join(output_path, catname)):
             os.mkdir(os.path.join(output_path, catname))
@@ -702,8 +728,9 @@ def download_attachments(output_path, urls):
 
         # Generate percent-encoded URL
         scheme, netloc, path, query, fragment = urlsplit(url)
-        path = quote(path)
-        url = urlunsplit((scheme, netloc, path, query, fragment))
+        if scheme != 'file':
+            path = quote(path)
+            url = urlunsplit((scheme, netloc, path, query, fragment))
 
         if not os.path.exists(full_path):
             os.makedirs(full_path)
@@ -711,7 +738,7 @@ def download_attachments(output_path, urls):
         try:
             urlretrieve(url, os.path.join(full_path, filename))
             locations[url] = os.path.join(localpath, filename)
-        except (URLError, IOError) as e:
+        except (URLError, OSError) as e:
             # Python 2.7 throws an IOError rather Than URLError
             logger.warning("No file could be downloaded from %s\n%s", url, e)
     return locations
@@ -773,7 +800,10 @@ def fields2pelican(
             links = None
 
         ext = get_ext(out_markup, in_markup)
-        if ext == '.md':
+        if ext == '.adoc':
+            header = build_asciidoc_header(title, date, author, categories,
+                                           tags, slug, status, attachments)
+        elif ext == '.md':
             header = build_markdown_header(
                 title, date, author, categories, tags, slug,
                 status, links.values() if links else None)
@@ -798,7 +828,7 @@ def fields2pelican(
                     new_content = decode_wp_content(content)
                 else:
                     paragraphs = content.splitlines()
-                    paragraphs = ['<p>{0}</p>'.format(p) for p in paragraphs]
+                    paragraphs = ['<p>{}</p>'.format(p) for p in paragraphs]
                     new_content = ''.join(paragraphs)
 
                 fp.write(new_content)
@@ -832,7 +862,7 @@ def fields2pelican(
 
             os.remove(html_filename)
 
-            with open(out_filename, 'r', encoding='utf-8') as fs:
+            with open(out_filename, encoding='utf-8') as fs:
                 content = fs.read()
                 if out_markup == 'markdown':
                     # In markdown, to insert a <br />, end a line with two
@@ -858,7 +888,7 @@ def fields2pelican(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Transform feed, Blogger, Dotclear, Posterous, Tumblr, or"
+        description="Transform feed, Blogger, Dotclear, Posterous, Tumblr, or "
                     "WordPress files into reST (rst) or Markdown (md) files. "
                     "Be sure to have pandoc installed.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import argparse
 import logging
 import multiprocessing
@@ -25,9 +23,8 @@ from pelican.plugins import signals
 from pelican.plugins._utils import load_plugins
 from pelican.readers import Readers
 from pelican.server import ComplexHTTPRequestHandler, RootedHTTPServer
-from pelican.settings import read_settings
-from pelican.utils import (clean_output_dir, file_watcher,
-                           folder_watcher, maybe_pluralize)
+from pelican.settings import coerce_overrides, read_settings
+from pelican.utils import (FileSystemWatcher, clean_output_dir, maybe_pluralize)
 from pelican.writers import Writer
 
 try:
@@ -40,7 +37,7 @@ DEFAULT_CONFIG_NAME = 'pelicanconf.py'
 logger = logging.getLogger(__name__)
 
 
-class Pelican(object):
+class Pelican:
 
     def __init__(self, settings):
         """Pelican initialisation
@@ -99,10 +96,12 @@ class Pelican(object):
             ) for cls in self.get_generator_classes()
         ]
 
-        # erase the directory if it is not the source and if that's
-        # explicitly asked
-        if (self.delete_outputdir and not
-                os.path.realpath(self.path).startswith(self.output_path)):
+        # Delete the output directory if (1) the appropriate setting is True
+        # and (2) that directory is not the parent of the source directory
+        if (self.delete_outputdir
+                and os.path.commonpath([os.path.realpath(self.output_path)]) !=
+                os.path.commonpath([os.path.realpath(self.output_path),
+                                    os.path.realpath(self.path)])):
             clean_output_dir(self.output_path, self.output_retention)
 
         for p in generators:
@@ -231,6 +230,18 @@ class PrintSettings(argparse.Action):
         parser.exit()
 
 
+class ParseDict(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        d = {}
+        if values:
+            for item in values:
+                split_items = item.split("=", 1)
+                key = split_items[0].strip()
+                value = split_items[1].strip()
+                d[key] = value
+        setattr(namespace, self.dest, d)
+
+
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser(
         description='A tool to generate a static blog, '
@@ -254,7 +265,7 @@ def parse_arguments(argv=None):
 
     parser.add_argument('-s', '--settings', dest='settings',
                         help='The settings of the application, this is '
-                        'automatically set to {0} if a file exists with this '
+                        'automatically set to {} if a file exists with this '
                         'name.'.format(DEFAULT_CONFIG_NAME))
 
     parser.add_argument('-d', '--delete-output-directory',
@@ -324,6 +335,16 @@ def parse_arguments(argv=None):
                         help='IP to bind to when serving files via HTTP '
                         '(default: 127.0.0.1)')
 
+    parser.add_argument('-e', '--extra-settings', dest='overrides',
+                        help='Specify one or more SETTING=VALUE pairs to '
+                             'override settings. If VALUE contains spaces, '
+                             'add quotes: SETTING="VALUE". Values other than '
+                             'integers and strings can be specified via JSON '
+                             'notation. (e.g., SETTING=none)',
+                        nargs='*',
+                        action=ParseDict
+                        )
+
     args = parser.parse_args(argv)
 
     if args.port is not None and not args.listen:
@@ -359,6 +380,7 @@ def get_config(args):
     if args.bind is not None:
         config['BIND'] = args.bind
     config['DEBUG'] = args.verbosity == logging.DEBUG
+    config.update(coerce_overrides(args.overrides))
 
     return config
 
@@ -381,65 +403,36 @@ def get_instance(args):
     return cls(settings), settings
 
 
-def autoreload(watchers, args, old_static, reader_descs, excqueue=None):
+def autoreload(args, excqueue=None):
+    print('  --- AutoReload Mode: Monitoring `content`, `theme` and'
+          ' `settings` for changes. ---')
+    pelican, settings = get_instance(args)
+    watcher = FileSystemWatcher(args.settings, Readers, settings)
+    sleep = False
     while True:
         try:
-            # Check source dir for changed files ending with the given
-            # extension in the settings. In the theme dir is no such
-            # restriction; all files are recursively checked if they
-            # have changed, no matter what extension the filenames
-            # have.
-            modified = {k: next(v) for k, v in watchers.items()}
+            # Don't sleep first time, but sleep afterwards to reduce cpu load
+            if sleep:
+                time.sleep(0.5)
+            else:
+                sleep = True
+
+            modified = watcher.check()
 
             if modified['settings']:
                 pelican, settings = get_instance(args)
-
-                # Adjust static watchers if there are any changes
-                new_static = settings.get("STATIC_PATHS", [])
-
-                # Added static paths
-                # Add new watchers and set them as modified
-                new_watchers = set(new_static).difference(old_static)
-                for static_path in new_watchers:
-                    static_key = '[static]%s' % static_path
-                    watchers[static_key] = folder_watcher(
-                        os.path.join(pelican.path, static_path),
-                        [''],
-                        pelican.ignore_files)
-                    modified[static_key] = next(watchers[static_key])
-
-                # Removed static paths
-                # Remove watchers and modified values
-                old_watchers = set(old_static).difference(new_static)
-                for static_path in old_watchers:
-                    static_key = '[static]%s' % static_path
-                    watchers.pop(static_key)
-                    modified.pop(static_key)
-
-                # Replace old_static with the new one
-                old_static = new_static
+                watcher.update_watchers(settings)
 
             if any(modified.values()):
                 print('\n-> Modified: {}. re-generating...'.format(
                     ', '.join(k for k, v in modified.items() if v)))
-
-                if modified['content'] is None:
-                    logger.warning(
-                        'No valid files found in content for '
-                        + 'the active readers:\n'
-                        + '\n'.join(reader_descs))
-
-                if modified['theme'] is None:
-                    logger.warning('Empty theme folder. Using `basic` '
-                                   'theme.')
-
                 pelican.run()
 
-        except KeyboardInterrupt as e:
-            logger.warning("Keyboard interrupt, quitting.")
+        except KeyboardInterrupt:
             if excqueue is not None:
-                excqueue.put(traceback.format_exception_only(type(e), e)[-1])
-            return
+                excqueue.put(None)
+                return
+            raise
 
         except Exception as e:
             if (args.verbosity == logging.DEBUG):
@@ -449,10 +442,8 @@ def autoreload(watchers, args, old_static, reader_descs, excqueue=None):
                 else:
                     raise
             logger.warning(
-                'Caught exception "%s". Reloading.', e)
-
-        finally:
-            time.sleep(.5)  # sleep to avoid cpu load
+                'Caught exception:\n"%s".', e,
+                exc_info=settings.get('DEBUG', False))
 
 
 def listen(server, port, output, excqueue=None):
@@ -476,8 +467,10 @@ def listen(server, port, output, excqueue=None):
         return
 
     except KeyboardInterrupt:
-        print("\nKeyboard interrupt received. Shutting down server.")
         httpd.socket.close()
+        if excqueue is not None:
+            return
+        raise
 
 
 def main(argv=None):
@@ -492,35 +485,11 @@ def main(argv=None):
     try:
         pelican, settings = get_instance(args)
 
-        readers = Readers(settings)
-        reader_descs = sorted(set(['%s (%s)' %
-                                   (type(r).__name__,
-                                    ', '.join(r.file_extensions))
-                                   for r in readers.readers.values()
-                                   if r.enabled]))
-
-        watchers = {'content': folder_watcher(pelican.path,
-                                              readers.extensions,
-                                              pelican.ignore_files),
-                    'theme': folder_watcher(pelican.theme,
-                                            [''],
-                                            pelican.ignore_files),
-                    'settings': file_watcher(args.settings)}
-
-        old_static = settings.get("STATIC_PATHS", [])
-        for static_path in old_static:
-            # use a prefix to avoid possible overriding of standard watchers
-            # above
-            watchers['[static]%s' % static_path] = folder_watcher(
-                os.path.join(pelican.path, static_path),
-                [''],
-                pelican.ignore_files)
-
         if args.autoreload and args.listen:
             excqueue = multiprocessing.Queue()
             p1 = multiprocessing.Process(
                 target=autoreload,
-                args=(watchers, args, old_static, reader_descs, excqueue))
+                args=(args, excqueue))
             p2 = multiprocessing.Process(
                 target=listen,
                 args=(settings.get('BIND'), settings.get('PORT'),
@@ -530,26 +499,19 @@ def main(argv=None):
             exc = excqueue.get()
             p1.terminate()
             p2.terminate()
-            logger.critical(exc)
+            if exc is not None:
+                logger.critical(exc)
         elif args.autoreload:
-            print('  --- AutoReload Mode: Monitoring `content`, `theme` and'
-                  ' `settings` for changes. ---')
-            autoreload(watchers, args, old_static, reader_descs)
+            autoreload(args)
         elif args.listen:
             listen(settings.get('BIND'), settings.get('PORT'),
                    settings.get("OUTPUT_PATH"))
         else:
-            if next(watchers['content']) is None:
-                logger.warning(
-                    'No valid files found in content for '
-                    + 'the active readers:\n'
-                    + '\n'.join(reader_descs))
-
-            if next(watchers['theme']) is None:
-                logger.warning('Empty theme folder. Using `basic` theme.')
-
+            watcher = FileSystemWatcher(args.settings, Readers, settings)
+            watcher.check()
             pelican.run()
-
+    except KeyboardInterrupt:
+        logger.warning('Keyboard interrupt received. Exiting.')
     except Exception as e:
         logger.critical('%s', e)
 

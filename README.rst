@@ -1,5 +1,5 @@
-Pelican |build-status| |pypi-version|
-=====================================
+Pelican |build-status| |pypi-version| |repology|
+================================================
 
 Pelican is a static site generator, written in Python_.
 
@@ -50,15 +50,18 @@ Why the name "Pelican"?
 .. _Python: https://www.python.org/
 .. _reStructuredText: http://docutils.sourceforge.net/rst.html
 .. _Markdown: https://daringfireball.net/projects/markdown/
-.. _Jinja2: http://jinja.pocoo.org/
-.. _Pygments: http://pygments.org/
+.. _Jinja2: https://palletsprojects.com/p/jinja/
+.. _Pygments: https://pygments.org/
 .. _`Pelican's documentation`: https://docs.getpelican.com/
 .. _`Pelican's internals`: https://docs.getpelican.com/en/latest/internals.html
 .. _`hosted on GitHub`: https://github.com/getpelican/pelican
 
-.. |build-status| image:: https://img.shields.io/travis/getpelican/pelican/master.svg
-   :target: https://travis-ci.org/getpelican/pelican
-   :alt: Travis CI: continuous integration status
+.. |build-status| image:: https://img.shields.io/github/workflow/status/getpelican/pelican/build
+   :target: https://github.com/getpelican/pelican/actions
+   :alt: GitHub Actions CI: continuous integration status
 .. |pypi-version| image:: https://img.shields.io/pypi/v/pelican.svg
    :target: https://pypi.python.org/pypi/pelican
    :alt: PyPI: the Python Package Index
+.. |repology| image:: https://repology.org/badge/tiny-repos/pelican.svg
+   :target: https://repology.org/project/pelican/versions
+   :alt: Repology: the packaging hub

@@ -43,7 +43,7 @@ publicly-accessible location:
 
 * Describe what version of Pelican you are running (output of ``pelican --version``
   or the HEAD commit hash if you cloned the repo) and how exactly you installed
-  it (the full command you used, e.g. ``pip install pelican``).
+  it (the full command you used, e.g. ``python -m pip install pelican``).
 * If you are looking for a way to get some end result, prepare a detailed
   description of what the end result should look like (preferably in the form of
   an image or a mock-up page) and explain in detail what you have done so far to
@@ -135,9 +135,9 @@ Contribution quality standards
   <https://pypi.org/project/pycodestyle>`_ or `flake8
   <https://pypi.org/project/flake8/>`_ tools, the latter of which in
   particular will give you some useful hints about ways in which the
-  code/formatting can be improved. If you are relying on your editor for PEP8
-  compliance, note that the line length specified by PEP8 is 79 (excluding the
-  line break).
+  code/formatting can be improved. We try to keep line length within the
+  79-character maximum specified by PEP8. Because that can sometimes compromise
+  readability, the hard/enforced maximum is 88 characters.
 * Ensure your code is compatible with the `officially-supported Python releases`_.
 * Add docs and tests for your changes. Undocumented and untested features will
   not be accepted.
