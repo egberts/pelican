@@ -1,0 +1,85 @@
+From main()/__init__.py
+
+pelican.run()/__init__.py
+  Delete output directory, if requested
+  loop thru <generators>.generator_context()
+    ArticleGenerator.generator_context()/generators.py
+      Go thru every articles, except for excluded ones
+        Check for its cache file if we worked on this before, use cache if so
+        File it into its meta status of 'published', 'draft',  or 'hidden'
+      _process()/generators.py
+At this point, content is already HTMLized.
+        figure out article ordering by alphabetical order (after translation)
+      Go thru every encountered articles (from earlier loop, excluded any)
+        Update category
+        Update tags
+      Update author or authors
+      Update date
+      Add to period-specific archives
+      _update_context()/generator.py
+        Make a list of all 'items' ('articles', 'drafts', 'hidden_articles', 'dates', 'tags', 'categories', 'authors', 'related_posts')
+      save_cache()/cache.py
+      readers.save_cache()/cache.py
+      signals.article_generator_finalized.send()/base.py
+        Interate thru different receivers
+At this point, content file are not written yet
+    PageGenerator.generator_context()/generators.py
+      generate_context()/generators.py
+    TemplateGenerator.generator_context()/generators.py
+    StaticGenerator.generator_context()/generators.py
+  signals.article_generator_finalized.send()/base.py
+    Iterate thru all receiversA
+  loop thru <generators>.refresh_metadata_intersite_links()
+    ArticleGenerator.refresh_metadata_intersite_links()/generators.py
+      Content.refresh_metadata_intersite_links()/contents.py
+    PageGenerator.refresh_metadata_intersite_links()/generators.py
+      Content.refresh_metadata_intersite_links()/contents.py
+    TemplateGenerator.refresh_metadata_intersite_links()/generators.py
+      Content.refresh_metadata_intersite_links()/contents.py
+    StaticGenerator.refresh_metadata_intersite_links()/generators.py
+      Content.refresh_metadata_intersite_links()/contents.py
+  loop thru <generators>.generate_output()
+    ArticleGenerator.generate_output()/generators.py
+      ArticleGenerator.generate_feeds()/generators.py
+        Writer.write_feed()/writers.py  # for ATOM
+        Writer.write_feed()/writers.py  # for RSS
+        Writer.write_feed()/writers.py  # for ATOM of all articles
+        Writer.write_feed()/writers.py  # for RSS of all articles
+        Writer.write_feed()/writers.py  # for ATOM of a specific category
+        Writer.write_feed()/writers.py  # for RSS of a specific category
+        Writer.write_feed()/writers.py  # for ATOM of an author
+        Writer.write_feed()/writers.py  # for RSS of an author
+        Writer.write_feed()/writers.py  # for ATOM of a specific tag
+        Writer.write_feed()/writers.py  # for RSS of a specific tag
+      ArticleGenerator.generate_pages()/generators.py
+        ArticleGenerator.generate_articles()/generators.py
+          signals.article_generator_write_article.send()/base.py
+            Content.url()
+              Content.get_url_setting()/contents.py
+            Writer.writer.write_file()
+At this point, content file are NOW written
+        ArticleGenerator.generate_period_archives()/generators.py
+        ArticleGenerator.generate_direct_templates()/generators.py
+        ArticleGenerator.generate_tags()/generators.py
+        ArticleGenerator.generate_categortes()/generators.py
+        ArticleGenerator.generate_authors()/generators.py
+        ArticleGenerator.generate_drafts()/generators.py
+      ArticleGenerator.generate_pages()/generators.py
+      signals.article_writer_finalized.send()/base.py
+    PageGenerator.generate_output()/generators.py
+      signals.page_generator_write_page.send()/generators.py
+        Content.save_as()/base.py
+        Generator.get_template()/generators.py
+        Content.url()/base.py
+          Content.get_url_setting()/contents.py
+        Writer.writer.write_file()/writers.py  # for save-as
+    TemplateGenerator.generate_output()/generators.py
+      for each page, check for template file
+        Witer.writer.write_file()/writers.py  # for each encountered template file
+    StaticGenerator.generate_output()/generators.py
+        StaticGenerator._copy_paths()/generators.py
+        for static file (theme/logo, copy to its output directory
+          StaticGenerator._file_update_required()/generators.py
+          if file is not updated then
+            StaticGenerator._link_or_copy_staticfile()/generators.py
+  signals.finalized.send()/__init__.py
