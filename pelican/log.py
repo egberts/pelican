@@ -1,80 +1,12 @@
 import logging
-import os
-import sys
 from collections import defaultdict
-from collections.abc import Mapping
 
-__all__ = [
-    'init'
-]
+from rich.console import Console
+from rich.logging import RichHandler
 
+__all__ = ["init"]
 
-class BaseFormatter(logging.Formatter):
-    def __init__(self, fmt=None, datefmt=None):
-        FORMAT = '%(customlevelname)s %(message)s'
-        super().__init__(fmt=FORMAT, datefmt=datefmt)
-
-    def format(self, record):
-        customlevel = self._get_levelname(record.levelname)
-        record.__dict__['customlevelname'] = customlevel
-        # format multiline messages 'nicely' to make it clear they are together
-        record.msg = record.msg.replace('\n', '\n  | ')
-        if not isinstance(record.args, Mapping):
-            record.args = tuple(arg.replace('\n', '\n  | ') if
-                                isinstance(arg, str) else
-                                arg for arg in record.args)
-        return super().format(record)
-
-    def formatException(self, ei):
-        ''' prefix traceback info for better representation '''
-        s = super().formatException(ei)
-        # fancy format traceback
-        s = '\n'.join('  | ' + line for line in s.splitlines())
-        # separate the traceback from the preceding lines
-        s = '  |___\n{}'.format(s)
-        return s
-
-    def _get_levelname(self, name):
-        ''' NOOP: overridden by subclasses '''
-        return name
-
-
-class ANSIFormatter(BaseFormatter):
-    ANSI_CODES = {
-        'red': '\033[1;31m',
-        'yellow': '\033[1;33m',
-        'cyan': '\033[1;36m',
-        'white': '\033[1;37m',
-        'bgred': '\033[1;41m',
-        'bggrey': '\033[1;100m',
-        'reset': '\033[0;m'}
-
-    LEVEL_COLORS = {
-        'INFO': 'cyan',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'bgred',
-        'DEBUG': 'bggrey'}
-
-    def _get_levelname(self, name):
-        color = self.ANSI_CODES[self.LEVEL_COLORS.get(name, 'white')]
-        if name == 'INFO':
-            fmt = '{0}->{2}'
-        else:
-            fmt = '{0}{1}{2}:'
-        return fmt.format(color, name, self.ANSI_CODES['reset'])
-
-
-class TextFormatter(BaseFormatter):
-    """
-    Convert a `logging.LogRecord' object into text.
-    """
-
-    def _get_levelname(self, name):
-        if name == 'INFO':
-            return '->'
-        else:
-            return name + ':'
+console = Console()
 
 
 class LimitFilter(logging.Filter):
@@ -100,8 +32,8 @@ class LimitFilter(logging.Filter):
             return True
 
         # extract group
-        group = record.__dict__.get('limit_msg', None)
-        group_args = record.__dict__.get('limit_args', ())
+        group = record.__dict__.get("limit_msg", None)
+        group_args = record.__dict__.get("limit_args", ())
 
         # ignore record if it was already raised
         message_key = (record.levelno, record.getMessage())
@@ -116,7 +48,7 @@ class LimitFilter(logging.Filter):
         if logger_level > logging.DEBUG:
             template_key = (record.levelno, record.msg)
             message_key = (record.levelno, record.getMessage())
-            if (template_key in self._ignore or message_key in self._ignore):
+            if template_key in self._ignore or message_key in self._ignore:
                 return False
 
         # check if we went over threshold
@@ -153,56 +85,69 @@ class FatalLogger(LimitLogger):
     warnings_fatal = False
     errors_fatal = False
 
-    def warning(self, *args, **kwargs):
-        super().warning(*args, **kwargs)
-        if FatalLogger.warnings_fatal:
-            raise RuntimeError('Warning encountered')
+    def warning(self, *args, stacklevel=1, **kwargs):
+        """
+        Displays a logging warning.
 
-    def error(self, *args, **kwargs):
-        super().error(*args, **kwargs)
+        Wrapping it here allows Pelican to filter warnings, and conditionally
+        make warnings fatal.
+
+        Args:
+            stacklevel (int): the stacklevel that would be used to display the
+            calling location, except for this function. Adjusting the
+            stacklevel allows you to see the "true" calling location of the
+            warning, rather than this wrapper location.
+        """
+        stacklevel += 1
+        super().warning(*args, stacklevel=stacklevel, **kwargs)
+        if FatalLogger.warnings_fatal:
+            raise RuntimeError("Warning encountered")
+
+    def error(self, *args, stacklevel=1, **kwargs):
+        """
+        Displays a logging error.
+
+        Wrapping it here allows Pelican to filter errors, and conditionally
+        make errors non-fatal.
+
+        Args:
+            stacklevel (int): the stacklevel that would be used to display the
+            calling location, except for this function. Adjusting the
+            stacklevel allows you to see the "true" calling location of the
+            error, rather than this wrapper location.
+        """
+        stacklevel += 1
+        super().error(*args, stacklevel=stacklevel, **kwargs)
         if FatalLogger.errors_fatal:
-            raise RuntimeError('Error encountered')
+            raise RuntimeError("Error encountered")
 
 
 logging.setLoggerClass(FatalLogger)
 # force root logger to be of our preferred class
 logging.getLogger().__class__ = FatalLogger
 
-
-def supports_color():
-    """
-    Returns True if the running system's terminal supports color,
-    and False otherwise.
-
-    from django.core.management.color
-    """
-    plat = sys.platform
-    supported_platform = plat != 'Pocket PC' and \
-        (plat != 'win32' or 'ANSICON' in os.environ)
-
-    # isatty is not always implemented, #6223.
-    is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
-    if not supported_platform or not is_a_tty:
-        return False
-    return True
+DEFAULT_LOG_HANDLER = RichHandler(console=console)
 
 
-def get_formatter():
-    if supports_color():
-        return ANSIFormatter()
-    else:
-        return TextFormatter()
-
-
-def init(level=None, fatal='', handler=logging.StreamHandler(), name=None,
-         logs_dedup_min_level=None):
-    FatalLogger.warnings_fatal = fatal.startswith('warning')
+def init(
+    level=None,
+    fatal="",
+    handler=DEFAULT_LOG_HANDLER,
+    name=None,
+    logs_dedup_min_level=None,
+):
+    FatalLogger.warnings_fatal = fatal.startswith("warning")
     FatalLogger.errors_fatal = bool(fatal)
 
-    logger = logging.getLogger(name)
+    LOG_FORMAT = "%(message)s"
+    logging.basicConfig(
+        level=level,
+        format=LOG_FORMAT,
+        datefmt="[%H:%M:%S]",
+        handlers=[handler] if handler else [],
+    )
 
-    handler.setFormatter(get_formatter())
-    logger.addHandler(handler)
+    logger = logging.getLogger(name)
 
     if level:
         logger.setLevel(level)
@@ -212,17 +157,18 @@ def init(level=None, fatal='', handler=logging.StreamHandler(), name=None,
 
 def log_warnings():
     import warnings
+
     logging.captureWarnings(True)
     warnings.simplefilter("default", DeprecationWarning)
-    init(logging.DEBUG, name='py.warnings')
+    init(logging.DEBUG, name="py.warnings")
 
 
-if __name__ == '__main__':
-    init(level=logging.DEBUG)
+if __name__ == "__main__":
+    init(level=logging.DEBUG, name=__name__)
 
-    root_logger = logging.getLogger()
-    root_logger.debug('debug')
-    root_logger.info('info')
-    root_logger.warning('warning')
-    root_logger.error('error')
-    root_logger.critical('critical')
+    root_logger = logging.getLogger(__name__)
+    root_logger.debug("debug")
+    root_logger.info("info")
+    root_logger.warning("warning")
+    root_logger.error("error")
+    root_logger.critical("critical")

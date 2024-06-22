@@ -15,16 +15,16 @@ Setting up the development environment
 ======================================
 
 While there are many ways to set up one's development environment, the following
-instructions will utilize Pip_ and Poetry_. These tools facilitate managing
+instructions will utilize Pip_ and PDM_. These tools facilitate managing
 virtual environments for separate Python projects that are isolated from one
 another, so you can use different packages (and package versions) for each.
 
-Please note that Python 3.6+ is required for Pelican development.
+Please note that Python |min_python| is required for Pelican development.
 
-*(Optional)* If you prefer to install Poetry once for use with multiple projects,
+*(Optional)* If you prefer to `install PDM <https://pdm.fming.dev/latest/#installation>`_ once for use with multiple projects,
 you can install it via::
 
-    curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
+    curl -sSL https://pdm.fming.dev/install-pdm.py | python3 -
 
 Point your web browser to the `Pelican repository`_ and tap the **Fork** button
 at top-right. Then clone the source for your fork and add the upstream project
@@ -35,23 +35,22 @@ as a Git remote::
     cd ~/projects/pelican
     git remote add upstream https://github.com/getpelican/pelican.git
 
-While Poetry can dynamically create and manage virtual environments, we're going
+While PDM can dynamically create and manage virtual environments, we're going
 to manually create and activate a virtual environment::
 
-    mkdir ~/virtualenvs
-    python3 -m venv ~/virtualenvs/pelican
-    source ~/virtualenvs/pelican/bin/activate
+    mkdir ~/virtualenvs && cd ~/virtualenvs
+    python3 -m venv pelican
+    source ~/virtualenvs/pelican/*/activate
 
 Install the needed dependencies and set up the project::
 
     python -m pip install invoke
     invoke setup
-    python -m pip install -e ~/projects/pelican
 
 Your local environment should now be ready to go!
 
 .. _Pip: https://pip.pypa.io/
-.. _Poetry: https://poetry.eustace.io/docs/#installation
+.. _PDM: https://pdm.fming.dev/latest/
 .. _Pelican repository: https://github.com/getpelican/pelican
 
 Development
@@ -65,6 +64,27 @@ your bug fix or feature::
 Now you can make changes to Pelican, its documentation, and/or other aspects of
 the project.
 
+Setting up ``git blame`` (optional)
+-----------------------------------
+
+``git blame`` annotates lines in a file with information about the pull request
+that last modified it. Sweeping shallow changes (like formatting) can make that
+information less useful, so we keep a list of such changes to be ignored. Run the
+following command to set this up in your repository, adding ``--global`` if you
+want this setting to apply to all repositories::
+
+    git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+As noted in a `useful article`_ about ``git blame``, there are other related
+settings you may find to be beneficial::
+
+    # Add `?` to any lines that have had a commit skipped using --ignore-rev
+    git config --global blame.markIgnoredLines true
+    # Add `*` to any lines that were added in a skipped commit and can not be attributed
+    git config --global blame.markUnblamableLines true
+
+.. _useful article: https://www.michaelheap.com/git-ignore-rev/
+
 Running the test suite
 ----------------------
 
@@ -75,11 +95,17 @@ via::
 
     invoke tests
 
-In addition to running the test suite, the above invocation will also check code
-style and let you know whether non-conforming patterns were found. In some cases
-these linters will make the needed changes directly, while in other cases you
-may need to make additional changes until ``invoke tests`` no longer reports any
-code style violations.
+(For more on Invoke, see ``invoke -l`` to list tasks, or
+https://pyinvoke.org for documentation.)
+
+In addition to running the test suite, it is important to also ensure that any
+lines you changed conform to code style guidelines. You can check that via::
+
+    invoke lint
+
+If code style violations are found in lines you changed, correct those lines
+and re-run the above lint command until they have all been fixed. You do not
+need to address style violations, if any, for code lines you did not touch.
 
 After making your changes and running the tests, you may see a test failure
 mentioning that "some generated files differ from the expected functional tests
@@ -102,6 +128,21 @@ Tox_ is a useful tool to automate running tests inside ``virtualenv``
 environments.
 
 .. _Tox: https://tox.readthedocs.io/en/latest/
+
+Running a code coverage report
+------------------------------
+
+Code is more likely to stay robust if it is tested. Coverage_ is a library that
+measures how much of the code is tested. To run it::
+
+    invoke coverage
+
+This will show overall coverage, coverage per file, and even line-by-line coverage.
+There is also an HTML report available::
+
+    open htmlcov/index.html
+
+.. _Coverage: https://github.com/nedbat/coveragepy
 
 Building the docs
 -----------------
@@ -145,9 +186,19 @@ Create a topic branch for your plugin bug fix or feature::
 
     git checkout -b name-of-your-bugfix-or-feature
 
-After writing new tests for your plugin changes, run the plugin test suite::
+After writing new tests for your plugin changes, run the plugin test suite and
+check for code style compliance via::
 
     invoke tests
+    invoke lint
+
+If style violations are found, many of them can be addressed automatically via::
+
+    invoke format
+
+If style violations are found even after running the above auto-formatters,
+you will need to make additional manual changes until ``invoke lint`` no longer
+reports any code style violations.
 
 .. _plugin template: https://github.com/getpelican/cookiecutter-pelican-plugin
 .. _Simple Footnotes: https://github.com/pelican-plugins/simple-footnotes

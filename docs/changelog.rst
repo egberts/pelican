@@ -1,6 +1,100 @@
 Release history
 ###############
 
+4.9.1 - 2023-11-15
+==================
+
+* Ensure ``tzdata`` dependency is installed on Windows
+
+4.9.0 - 2023-11-12
+==================
+
+* Upgrade code to new minimum supported Python version: 3.8
+* Settings support for ``pathlib.Path`` `(#2758) <https://github.com/getpelican/pelican/pull/2758>`_
+* Various improvements to Simple theme (`#2976 <https://github.com/getpelican/pelican/pull/2976>`_ & `#3234 <https://github.com/getpelican/pelican/pull/3234>`_)
+* Use Furo as Sphinx documentation theme `(#3023) <https://github.com/getpelican/pelican/pull/3023>`_
+* Default to 100 articles maximum in feeds `(#3127) <https://github.com/getpelican/pelican/pull/3127>`_
+* Add ``period_archives common context`` variable `(#3148) <https://github.com/getpelican/pelican/pull/3148>`_
+* Use ``watchfiles`` as the file-watching backend `(#3151) <https://github.com/getpelican/pelican/pull/3151>`_
+* Add GitHub Actions workflow for GitHub Pages `(#3189) <https://github.com/getpelican/pelican/pull/3189>`_
+* Allow dataclasses in settings `(#3204) <https://github.com/getpelican/pelican/pull/3204>`_
+* Switch build tool to PDM instead of Setuptools/Poetry `(#3220) <https://github.com/getpelican/pelican/pull/3220>`_
+* Provide a ``plugin_enabled`` Jinja test for themes `(#3235) <https://github.com/getpelican/pelican/pull/3235>`_
+* Preserve connection order in Blinker `(#3238) <https://github.com/getpelican/pelican/pull/3238>`_
+* Remove social icons from default ``notmyidea`` theme `(#3240) <https://github.com/getpelican/pelican/pull/3240>`_
+* Remove unreliable ``WRITE_SELECTED`` feature `(#3243) <https://github.com/getpelican/pelican/pull/3243>`_
+* Importer: Report broken embedded video links when importing from Tumblr `(#3177) <https://github.com/getpelican/pelican/issues/3177>`_
+* Importer: Remove newline addition when iterating Photo post types `(#3178) <https://github.com/getpelican/pelican/issues/3178>`_
+* Importer: Force timestamp conversion in Tumblr importer to be UTC with offset `(#3221) <https://github.com/getpelican/pelican/pull/3221>`_
+* Importer: Use tempfile for intermediate HTML file for Pandoc `(#3221) <https://github.com/getpelican/pelican/pull/3221>`_
+* Switch linters to Ruff `(#3223) <https://github.com/getpelican/pelican/pull/3223>`_
+
+4.8.0 - 2022-07-11
+==================
+
+* Use JSON values for extra settings in Invoke tasks template `(#2994) <https://github.com/getpelican/pelican/pull/2994>`_
+* Add content tag for links, which can help with things like Twitter social cards `(#3001) <https://github.com/getpelican/pelican/pull/3001>`_
+* Improve word count behavior when generating summary `(#3002) <https://github.com/getpelican/pelican/pull/3002>`_
+
+4.7.2 - 2022-02-09
+==================
+
+* Fix incorrect parsing of parameters specified via `-e` / `--extra-settings` option flags `(#2938) <https://github.com/getpelican/pelican/pull/2938>`_
+* Add ``categories.html`` template to default theme `(#2973) <https://github.com/getpelican/pelican/pull/2973>`_
+* Document how to use plugins to inject content `(#2922) <https://github.com/getpelican/pelican/pull/2922>`_
+
+4.7.1 - 2021-10-12
+==================
+
+* Extend rich logging to server component `(#2927) <https://github.com/getpelican/pelican/pull/2927>`_
+* Fix an issue where metadata flagged to be discarded was being cached `(#2926) <https://github.com/getpelican/pelican/pull/2926>`_
+* Adjust suffix in server to allow redirection when needed `(#2931) <https://github.com/getpelican/pelican/pull/2931>`_
+* Add MIME types for web fonts `(#2929) <https://github.com/getpelican/pelican/pull/2929>`_
+* Distribute sample data used to run tests `(#2935) <https://github.com/getpelican/pelican/pull/2935>`_
+* Add Python 3.10 to test matrix
+
+4.7.0 - 2021-10-01
+==================
+
+* Improve default theme rendering on mobile and other small screen devices `(#2914) <https://github.com/getpelican/pelican/pull/2914>`_
+* Add support for hidden articles `(#2866) <https://github.com/getpelican/pelican/pull/2866>`_
+* Improve word count behavior when generating summary CJK & other locales `(#2864) <https://github.com/getpelican/pelican/pull/2864>`_
+* Add progress spinner during generation `(#2869) <https://github.com/getpelican/pelican/pull/2869>`_
+  and richer logging `(#2897) <https://github.com/getpelican/pelican/pull/2897>`_, both via `Rich <https://github.com/willmcgugan/rich>`_
+* Invoke tasks ``serve`` and ``livereload`` now auto-open a web browser pointing to the locally-served web site `(#2764) <https://github.com/getpelican/pelican/pull/2764>`_
+* Support some date format codes used by ISO dates `(#2902) <https://github.com/getpelican/pelican/pull/2902>`_
+* Document how to add a new writer `(#2901) <https://github.com/getpelican/pelican/pull/2901>`_
+
+4.6.0 - 2021-03-23
+==================
+
+* Add new URL pattern to ``PAGINATION_PATTERNS`` for the last page in the list `(#1401) <https://github.com/getpelican/pelican/issues/1401>`_
+* Speed up ``livereload`` Invoke task via caching `(#2847) <https://github.com/getpelican/pelican/pull/2847>`_
+* Ignore ``None`` return value from ``get_generators`` signal `(#2850) <https://github.com/getpelican/pelican/pull/2850>`_
+* Relax dependency minimum versions and remove upper bounds
+
+4.5.4 - 2021-01-04
+==================
+
+Replace plugin definitions in settings with string representations after registering, so they can be cached correctly `(#2828) <https://github.com/getpelican/pelican/issues/2828>`_.
+
+4.5.3 - 2020-12-01
+==================
+
+Fix a mistake made in PR #2821
+
+4.5.2 - 2020-11-22
+==================
+
+Improve logging of generators and writer loaders
+
+4.5.1 - 2020-11-02
+==================
+
+* Refactor intra-site link discovery in order to match more permissively `(#2646) <https://github.com/getpelican/pelican/issues/2646>`_
+* Fix plugins running twice in auto-reload mode `(#2817) <https://github.com/getpelican/pelican/issues/2817>`_
+* Add notice to use ``from pelican import signals`` instead of ``import pelican.signals`` `(#2805) <https://github.com/getpelican/pelican/issues/2805>`_
+
 4.5.0 - 2020-08-20
 ==================
 

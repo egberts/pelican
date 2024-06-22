@@ -1,7 +1,8 @@
+---
 # See https://pre-commit.com/hooks.html for info on hooks
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.5.0
+    rev: v4.6.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -10,11 +11,20 @@ repos:
       - id: debug-statements
       - id: detect-private-key
       - id: end-of-file-fixer
+      - id: forbid-new-submodules
       - id: trailing-whitespace
-      - id: flake8
-        name: Flake8 on commit diff
-        description: This hook limits Flake8 checks to changed lines of code.
-        entry: bash
-        args: [-c, 'git diff HEAD | flake8 --diff --max-line-length=88']
 
-exclude: ^pelican/tests/output/
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # ruff version should match the one in pyproject.toml
+    rev: v0.4.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/rtts/djhtml
+    rev: '3.0.6'
+    hooks:
+      - id: djhtml
+      - id: djcss
+      - id: djjs

@@ -9,11 +9,15 @@ line::
 If you used the ``pelican-quickstart`` command, your primary settings file will
 be named ``pelicanconf.py`` by default.
 
-You can also specify extra settings via ``-e`` / ``--extra-settings`` option
-flags, which will override default settings as well as any defined within
-settings files::
+You can also specify settings via ``-e`` / ``--extra-settings`` option
+flags. It will override default settings as well as any defined within the
+setting file. Note that values must follow JSON notation::
 
-    pelican content -e DELETE_OUTPUT_DIRECTORY=true
+    pelican content -e SITENAME='"A site"' READERS='{"html": null}' CACHE_CONTENT=true
+
+Environment variables can also be used here but must be escaped appropriately::
+
+    pelican content -e API_KEY=''\"$API_KEY\"''
 
 .. note::
 
@@ -104,6 +108,7 @@ Basic settings
    should map the filtername to the filter function.
 
    Example::
+
     import sys
     sys.path.append('to/your/path')
 
@@ -276,7 +281,7 @@ Basic settings
 
    If set to True, several typographical improvements will be incorporated into
    the generated HTML via the `Typogrify
-   <https://pypi.python.org/pypi/typogrify>`_ library, which can be installed
+   <https://pypi.org/project/typogrify/>`_ library, which can be installed
    via: ``python -m pip install typogrify``
 
 .. data:: TYPOGRIFY_IGNORE_TAGS = []
@@ -348,16 +353,14 @@ Basic settings
 
    Controls how files are checked for modifications.
 
+   - If set to ``'mtime'``, the modification time of the file is
+     checked.
+   - If set to a name of a function provided by the ``hashlib``
+     module, e.g. ``'md5'``, the file hash is checked.
+
 .. data:: LOAD_CONTENT_CACHE = False
 
    If ``True``, load unmodified content from caches.
-
-.. data:: WRITE_SELECTED = []
-
-   If this list is not empty, **only** output files with their paths in this
-   list are written. Paths should be either absolute or relative to the current
-   Pelican working directory. For possible use cases see
-   :ref:`writing_only_selected_content`.
 
 .. data:: FORMATTED_FIELDS = ['summary']
 
@@ -554,43 +557,46 @@ written over time.
 Example usage::
 
    YEAR_ARCHIVE_SAVE_AS = 'posts/{date:%Y}/index.html'
+   YEAR_ARCHIVE_URL = 'posts/{date:%Y}/'
    MONTH_ARCHIVE_SAVE_AS = 'posts/{date:%Y}/{date:%b}/index.html'
+   MONTH_ARCHIVE_URL = 'posts/{date:%Y}/{date:%b}/'
 
 With these settings, Pelican will create an archive of all your posts for the
 year at (for instance) ``posts/2011/index.html`` and an archive of all your
-posts for the month at ``posts/2011/Aug/index.html``.
+posts for the month at ``posts/2011/Aug/index.html``. These can be accessed
+through the URLs ``posts/2011/`` and ``posts/2011/Aug/``, respectively.
 
 .. note::
     Period archives work best when the final path segment is ``index.html``.
     This way a reader can remove a portion of your URL and automatically arrive
     at an appropriate archive of posts, without having to specify a page name.
 
-.. data:: YEAR_ARCHIVE_URL = ''
-
-   The URL to use for per-year archives of your posts. Used only if you have
-   the ``{url}`` placeholder in ``PAGINATION_PATTERNS``.
-
 .. data:: YEAR_ARCHIVE_SAVE_AS = ''
 
    The location to save per-year archives of your posts.
 
-.. data:: MONTH_ARCHIVE_URL = ''
+.. data:: YEAR_ARCHIVE_URL = ''
 
-   The URL to use for per-month archives of your posts. Used only if you have
-   the ``{url}`` placeholder in ``PAGINATION_PATTERNS``.
+   The URL to use for per-year archives of your posts. You should set this if
+   you enable per-year archives.
 
 .. data:: MONTH_ARCHIVE_SAVE_AS = ''
 
    The location to save per-month archives of your posts.
 
-.. data:: DAY_ARCHIVE_URL = ''
+.. data:: MONTH_ARCHIVE_URL = ''
 
-   The URL to use for per-day archives of your posts. Used only if you have the
-   ``{url}`` placeholder in ``PAGINATION_PATTERNS``.
+   The URL to use for per-month archives of your posts. You should set this if
+   you enable per-month archives.
 
 .. data:: DAY_ARCHIVE_SAVE_AS = ''
 
    The location to save per-day archives of your posts.
+
+.. data:: DAY_ARCHIVE_URL = ''
+
+   The URL to use for per-day archives of your posts. You should set this if
+   you enable per-day archives.
 
 ``DIRECT_TEMPLATES`` work a bit differently than noted above. Only the
 ``_SAVE_AS`` settings are available, but it is available for any direct
@@ -759,9 +765,9 @@ Time and Date
 
 .. [#] Default is the system locale.
 
-.. _Jinja custom filters documentation: https://jinja.palletsprojects.com/en/master/api/#custom-filters
-.. _Jinja global namespace documentation: https://jinja.palletsprojects.com/en/master/api/#the-global-namespace
-.. _Jinja custom tests documentation: https://jinja.palletsprojects.com/en/master/api/#custom-tests
+.. _Jinja custom filters documentation: https://jinja.palletsprojects.com/en/latest/api/#custom-filters
+.. _Jinja global namespace documentation: https://jinja.palletsprojects.com/en/latest/api/#the-global-namespace
+.. _Jinja custom tests documentation: https://jinja.palletsprojects.com/en/latest/api/#custom-tests
 
 .. _locales on Windows: https://www.microsoft.com/en-us/download/details.aspx?id=55979
 
@@ -815,7 +821,7 @@ Metadata
 
    The default metadata you want to use for all articles and pages.
 
-.. data:: FILENAME_METADATA = r'(?P<date>\d{4}-\d{2}-\d{2}).*'
+.. data:: FILENAME_METADATA = r'(?P<date>\\d{4}-\\d{2}-\\d{2}).*'
 
    The regexp that will be used to extract any metadata from the filename. All
    named groups that are matched will be set in the metadata object.  The
@@ -991,16 +997,21 @@ the ``TAG_FEED_ATOM`` and ``TAG_FEED_RSS`` settings:
    placeholder. If not set, ``TAG_FEED_RSS`` is used both for save location and
    URL.
 
-.. data:: FEED_MAX_ITEMS
+.. data:: FEED_MAX_ITEMS = 100
 
-   Maximum number of items allowed in a feed. Feed item quantity is
-   unrestricted by default.
+   Maximum number of items allowed in a feed. Setting to ``None`` will cause the
+   feed to contains every article. 100 if not specified.
 
 .. data:: RSS_FEED_SUMMARY_ONLY = True
 
    Only include item summaries in the ``description`` tag of RSS feeds. If set
    to ``False``, the full content will be included instead. This setting
    doesn't affect Atom feeds, only RSS ones.
+
+.. data:: FEED_APPEND_REF = False
+
+   If set to ``True``, ``?ref=feed`` will be appended to links in generated
+   feeds for the purpose of referrer tracking.
 
 If you don't want to generate some or any of these feeds, set the above
 variables to ``None``.
@@ -1067,6 +1078,11 @@ as follows::
   )
 
 
+If you want a pattern to apply to the last page in the list, use ``-1``
+as the ``minimum_page`` value::
+
+    (-1, '{base_name}/last/', '{base_name}/last/index.html'),
+
 Translations
 ============
 
@@ -1129,10 +1145,11 @@ Ordering content
 
    Defines how the articles (``articles_page.object_list`` in the template) are
    sorted. Valid options are: metadata as a string (use ``reversed-`` prefix
-   the reverse the sort order), special option ``'basename'`` which will use
-   the basename of the file (without path) or a custom function to extract the
-   sorting key from articles. The default value, ``'reversed-date'``, will sort
-   articles by date in reverse order (i.e. newest article comes first).
+   to reverse the sort order), special option ``'basename'`` which will use
+   the basename of the file (without path), or a custom function to extract the
+   sorting key from articles. Using a value of ``'date'`` will sort articles in
+   chronological order, while the default value, ``'reversed-date'``, will sort
+   articles by date in reverse order (i.e., newest article comes first).
 
 .. data:: PAGE_ORDER_BY = 'basename'
 
@@ -1212,6 +1229,12 @@ Following are example ways to specify your preferred theme::
     # Specify a customized theme, via absolute path
     THEME = "/home/myuser/projects/mysite/themes/mycustomtheme"
 
+The built-in ``simple`` theme can be customized using the following settings.
+
+.. data:: STYLESHEET_URL
+
+   The URL of the stylesheet to use.
+
 The built-in ``notmyidea`` theme can make good use of the following settings.
 Feel free to use them in your themes as well.
 
@@ -1229,18 +1252,19 @@ Feel free to use them in your themes as well.
    Your GitHub URL (if you have one). It will then use this information to
    create a GitHub ribbon.
 
-.. data:: GOOGLE_ANALYTICS
+.. data:: ANALYTICS
 
-   Set to ``UA-XXXXX-Y`` Property's tracking ID to activate Google Analytics.
+   Put any desired analytics scripts in this setting in ``publishconf.py``.
+   Example:
 
-.. data:: GA_COOKIE_DOMAIN
+   .. parsed-literal::
 
-   Set cookie domain field of Google Analytics tracking code. Defaults to
-   ``auto``.
-
-.. data:: GOSQUARED_SITENAME
-
-   Set to 'XXX-YYYYYY-X' to activate GoSquared.
+      ANALYTICS = """
+          <script src="/theme/js/primary-analytics.js"></script>
+          <script>
+              [ … in-line Javascript code for secondary analytics … ]
+          </script>
+      """
 
 .. data:: MENUITEMS
 
@@ -1374,21 +1398,6 @@ modification times of the generated ``*.html`` files will always change.
 Therefore, ``rsync``-based uploading may benefit from the ``--checksum``
 option.
 
-.. _writing_only_selected_content:
-
-
-Writing only selected content
-=============================
-
-When only working on a single article or page, or making tweaks to your theme,
-it is often desirable to generate and review your work as quickly as possible.
-In such cases, generating and writing the entire site output is often
-unnecessary. By specifying only the desired files as output paths in the
-``WRITE_SELECTED`` list, **only** those files will be written. This list can be
-also specified on the command line using the ``--write-selected`` option, which
-accepts a comma-separated list of output file paths. By default this list is
-empty, so all output is written. See :ref:`site_generation` for more details.
-
 
 Example settings
 ================
@@ -1397,5 +1406,5 @@ Example settings
     :language: python
 
 
-.. _Jinja Environment documentation: https://jinja.palletsprojects.com/en/master/api/#jinja2.Environment
+.. _Jinja Environment documentation: https://jinja.palletsprojects.com/en/latest/api/#jinja2.Environment
 .. _Docutils Configuration: http://docutils.sourceforge.net/docs/user/config.html

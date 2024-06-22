@@ -1,7 +1,17 @@
 .. _theming-pelican:
 
-Creating themes
-###############
+Themes
+######
+
+There is a community-managed repository of `Pelican Themes`_ for people to share
+and use.
+
+Please note that while we do our best to review and merge theme contributions,
+they are submitted by the Pelican community and thus may have varying levels of
+support and interoperability.
+
+Creating Themes
+~~~~~~~~~~~~~~~
 
 To generate its HTML output, Pelican uses the `Jinja
 <https://palletsprojects.com/p/jinja/>`_ templating engine due to its flexibility and
@@ -24,11 +34,10 @@ Structure
 To make your own theme, you must follow the following structure::
 
     ├── static
-    │   ├── css
-    │   └── images
+    │   ├── css
+    │   └── images
     └── templates
         ├── archives.html         // to display archives
-        ├── period_archives.html  // to display time-period archives
         ├── article.html          // processed for each article
         ├── author.html           // processed for each author
         ├── authors.html          // must list all the authors
@@ -36,6 +45,7 @@ To make your own theme, you must follow the following structure::
         ├── category.html         // processed for each category
         ├── index.html            // the index (list all the articles)
         ├── page.html             // processed for each page
+        ├── period_archives.html  // to display time-period archives
         ├── tag.html              // processed for each tag
         └── tags.html             // must list all the tags. Can be a tag cloud.
 
@@ -50,7 +60,7 @@ To make your own theme, you must follow the following structure::
 
 .. _templates-variables:
 
-Templates and variables
+Templates and Variables
 =======================
 
 The idea is to use a simple syntax that you can embed into your HTML pages.
@@ -61,14 +71,16 @@ All templates will receive the variables defined in your settings file, as long
 as they are in all-caps. You can access them directly.
 
 
-Common variables
+.. _common_variables:
+
+Common Variables
 ----------------
 
 All of these settings will be available to all templates.
 
-=============   ===================================================
+=============== ===================================================
 Variable        Description
-=============   ===================================================
+=============== ===================================================
 output_file     The name of the file currently being generated. For
                 instance, when Pelican is rendering the home page,
                 output_file will be "index.html".
@@ -80,7 +92,12 @@ articles        The list of articles, ordered descending by date.
                 in the `all_articles` variable.
 dates           The same list of articles, but ordered by date,
                 ascending.
+hidden_articles The list of hidden articles
 drafts          The list of draft articles
+period_archives A dictionary containing elements related to
+                time-period archives (if enabled). See the section
+                :ref:`Listing and Linking to Period Archives
+                <period_archives_variable>` for details.
 authors         A list of (author, articles) tuples, containing all
                 the authors and corresponding articles (values)
 categories      A list of (category, articles) tuples, containing
@@ -90,7 +107,7 @@ tags            A list of (tag, articles) tuples, containing all
 pages           The list of pages
 hidden_pages    The list of hidden pages
 draft_pages     The list of draft pages
-=============   ===================================================
+=============== ===================================================
 
 
 Sorting
@@ -104,7 +121,7 @@ that allow them to be easily sorted by name::
 If you want to sort based on different criteria, `Jinja's sort command`__ has a
 number of options.
 
-__ https://jinja.palletsprojects.com/en/master/templates/#sort
+__ https://jinja.palletsprojects.com/en/latest/templates/#sort
 
 
 Date Formatting
@@ -122,6 +139,23 @@ your date according to the locale given in your settings::
 
 .. _datetime: https://docs.python.org/3/library/datetime.html#datetime-objects
 .. _strftime: https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
+
+Checking Loaded Plugins
+-----------------------
+
+Pelican provides a ``plugin_enabled`` Jinja test for checking if a certain plugin
+is enabled. This test accepts a plugin name as a string and will return a Boolean.
+Namespace plugins can be specified by full name (``pelican.plugins.plugin_name``)
+or short name (``plugin_name``). The following example uses the ``webassets`` plugin
+to minify CSS if the plugin is enabled and otherwise falls back to regular CSS::
+
+    {% if "webassets" is plugin_enabled %}
+        {% assets filters="cssmin", output="css/style.min.css", "css/style.scss" %}
+            <link rel="stylesheet" href="{{SITEURL}}/{{ASSET_URL}}">
+        {% endassets %}
+    {% else %}
+        <link rel="stylesheet" href="{{SITEURL}}/css/style.css}">
+    {% endif %}
 
 
 index.html
@@ -327,12 +361,71 @@ period                  A tuple of the form (`year`, `month`, `day`) that
                         given year. It contains both `year` and `month`
                         if the time period is over years and months and
                         so on.
+period_num              A tuple of the form (``year``, ``month``, ``day``),
+                        as in ``period``, except all values are numbers.
 
 ===================     ===================================================
 
 You can see an example of how to use `period` in the `"simple" theme
 period_archives.html template
 <https://github.com/getpelican/pelican/blob/master/pelican/themes/simple/templates/period_archives.html>`_.
+
+
+.. _period_archives_variable:
+
+Listing and Linking to Period Archives
+""""""""""""""""""""""""""""""""""""""
+
+The ``period_archives`` variable can be used to generate a list of links to
+the set of period archives that Pelican generates. As a :ref:`common variable
+<common_variables>`, it is available for use in any template, so you
+can implement such an index in a custom direct template, or in a sidebar
+visible across different site pages.
+
+``period_archives`` is a dict that may contain ``year``, ``month``, and/or
+``day`` keys, depending on which ``*_ARCHIVE_SAVE_AS`` settings are enabled.
+The corresponding value is a list of dicts, where each dict in turn represents
+a time period (ordered according to the ``NEWEST_FIRST_ARCHIVES`` setting)
+with the following keys and values:
+
+===================     ===================================================
+Key                     Value
+===================     ===================================================
+period                  The same tuple as described in
+                        ``period_archives.html``, e.g.
+                        ``(2023, 'June', 18)``.
+period_num              The same tuple as described in
+                        ``period_archives.html``, e.g. ``(2023, 6, 18)``.
+url                     The URL to the period archive page, e.g.
+                        ``posts/2023/06/18/``. This is controlled by the
+                        corresponding ``*_ARCHIVE_URL`` setting.
+save_as                 The path to the save location of the period archive
+                        page file, e.g. ``posts/2023/06/18/index.html``.
+                        This is used internally by Pelican and is usually
+                        not relevant to themes.
+articles                A list of :ref:`Article <object-article>` objects
+                        that fall under the time period.
+dates                   Same list as ``articles``, but ordered according
+                        to the ``NEWEST_FIRST_ARCHIVES`` setting.
+===================     ===================================================
+
+Here is an example of how ``period_archives`` can be used in a template:
+
+.. code-block:: html+jinja
+
+    <ul>
+    {% for archive in period_archives.month %}
+        <li>
+            <a href="{{ SITEURL }}/{{ archive.url }}">
+                {{ archive.period | reverse | join(' ') }} ({{ archive.articles|count }})
+            </a>
+        </li>
+    {% endfor %}
+    </ul>
+
+You can change ``period_archives.month`` in the ``for`` statement to
+``period_archives.year`` or ``period_archives.day`` as appropriate, depending
+on the time period granularity desired.
 
 
 Objects
@@ -452,14 +545,14 @@ The feed variables changed in 3.0. Each variable now explicitly lists ATOM or
 RSS in the name. ATOM is still the default. Old themes will need to be updated.
 Here is a complete list of the feed variables::
 
-    FEED_ATOM
-    FEED_RSS
-    FEED_ALL_ATOM
-    FEED_ALL_RSS
-    CATEGORY_FEED_ATOM
-    CATEGORY_FEED_RSS
     AUTHOR_FEED_ATOM
     AUTHOR_FEED_RSS
+    CATEGORY_FEED_ATOM
+    CATEGORY_FEED_RSS
+    FEED_ALL_ATOM
+    FEED_ALL_RSS
+    FEED_ATOM
+    FEED_RSS
     TAG_FEED_ATOM
     TAG_FEED_RSS
     TRANSLATION_FEED_ATOM
@@ -568,3 +661,8 @@ Download
 """"""""
 
 You can download this example theme :download:`here <_static/theme-basic.zip>`.
+
+
+.. Links
+
+.. _`Pelican Themes`: https://github.com/getpelican/pelican-themes

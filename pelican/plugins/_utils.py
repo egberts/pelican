@@ -1,10 +1,10 @@
 import importlib
 import importlib.machinery
 import importlib.util
+import inspect
 import logging
 import pkgutil
 import sys
-
 
 logger = logging.getLogger(__name__)
 
@@ -23,31 +23,55 @@ def get_namespace_plugins(ns_pkg=None):
 
     return {
         name: importlib.import_module(name)
-        for finder, name, ispkg
-        in iter_namespace(ns_pkg)
+        for finder, name, ispkg in iter_namespace(ns_pkg)
         if ispkg
     }
 
 
 def list_plugins(ns_pkg=None):
     from pelican.log import init as init_logging
+
     init_logging(logging.INFO)
     ns_plugins = get_namespace_plugins(ns_pkg)
     if ns_plugins:
-        logger.info('Plugins found:\n' + '\n'.join(ns_plugins))
+        logger.info("Plugins found:\n" + "\n".join(ns_plugins))
     else:
-        logger.info('No plugins are installed')
+        logger.info("No plugins are installed")
+
+
+def plugin_enabled(name, plugin_list=None):
+    if plugin_list is None or not plugin_list:
+        # no plugins are loaded
+        return False
+
+    if name in plugin_list:
+        # search name as is
+        return True
+
+    if f"pelican.plugins.{name}" in plugin_list:
+        # check if short name is a namespace plugin
+        return True
+
+    return False
 
 
 def load_legacy_plugin(plugin, plugin_paths):
+    if "." in plugin:
+        # it is in a package, try to resolve package first
+        package, _, _ = plugin.rpartition(".")
+        load_legacy_plugin(package, plugin_paths)
+
     # Try to find plugin in PLUGIN_PATHS
     spec = importlib.machinery.PathFinder.find_spec(plugin, plugin_paths)
     if spec is None:
         # If failed, try to find it in normal importable locations
         spec = importlib.util.find_spec(plugin)
     if spec is None:
-        raise ImportError('Cannot import plugin `{}`'.format(plugin))
+        raise ImportError(f"Cannot import plugin `{plugin}`")
     else:
+        # Avoid loading the same plugin twice
+        if spec.name in sys.modules:
+            return sys.modules[spec.name]
         # create module object from spec
         mod = importlib.util.module_from_spec(spec)
         # place it into sys.modules cache
@@ -69,33 +93,46 @@ def load_legacy_plugin(plugin, plugin_paths):
 
 
 def load_plugins(settings):
-    logger.debug('Finding namespace plugins')
+    logger.debug("Finding namespace plugins")
     namespace_plugins = get_namespace_plugins()
     if namespace_plugins:
-        logger.debug('Namespace plugins found:\n' +
-                     '\n'.join(namespace_plugins))
+        logger.debug("Namespace plugins found:\n" + "\n".join(namespace_plugins))
     plugins = []
-    if settings.get('PLUGINS') is not None:
-        for plugin in settings['PLUGINS']:
+    if settings.get("PLUGINS") is not None:
+        for plugin in settings["PLUGINS"]:
             if isinstance(plugin, str):
-                logger.debug('Loading plugin `%s`', plugin)
+                logger.debug("Loading plugin `%s`", plugin)
                 # try to find in namespace plugins
                 if plugin in namespace_plugins:
                     plugin = namespace_plugins[plugin]
-                elif 'pelican.plugins.{}'.format(plugin) in namespace_plugins:
-                    plugin = namespace_plugins['pelican.plugins.{}'.format(
-                        plugin)]
+                elif f"pelican.plugins.{plugin}" in namespace_plugins:
+                    plugin = namespace_plugins[f"pelican.plugins.{plugin}"]
                 # try to import it
                 else:
                     try:
                         plugin = load_legacy_plugin(
-                            plugin,
-                            settings.get('PLUGIN_PATHS', []))
+                            plugin, settings.get("PLUGIN_PATHS", [])
+                        )
                     except ImportError as e:
-                        logger.error('Cannot load plugin `%s`\n%s', plugin, e)
+                        logger.error("Cannot load plugin `%s`\n%s", plugin, e)
                         continue
             plugins.append(plugin)
     else:
         plugins = list(namespace_plugins.values())
 
     return plugins
+
+
+def get_plugin_name(plugin):
+    """
+    Plugins can be passed as module objects, however this breaks caching as
+    module objects cannot be pickled. To work around this, all plugins are
+    stringified post-initialization.
+    """
+    if inspect.isclass(plugin):
+        return plugin.__qualname__
+
+    if inspect.ismodule(plugin):
+        return plugin.__name__
+
+    return type(plugin).__qualname__

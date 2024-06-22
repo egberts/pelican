@@ -1,7 +1,7 @@
 Installing Pelican
 ##################
 
-Pelican currently runs best on 3.6+; earlier versions of Python are not supported.
+Pelican currently runs best on |min_python|; earlier versions of Python are not supported.
 
 You can install Pelican via several different methods. The simplest is via Pip_::
 
@@ -64,7 +64,6 @@ automatically installed without any action on your part:
 * `pygments <https://pypi.org/project/Pygments/>`_, for syntax highlighting
 * `docutils <https://pypi.org/project/docutils/>`_, for supporting
   reStructuredText as an input format
-* `pytz <https://pypi.org/project/pytz/>`_, for timezone definitions
 * `blinker <https://pypi.org/project/blinker/>`_, an object-to-object and
   broadcast signaling system
 * `unidecode <https://pypi.org/project/Unidecode/>`_, for ASCII

@@ -1,11 +1,13 @@
 Filing issues
 =============
 
-* Before you file an issue, try `asking for help`_ first.
-* If determined to file an issue, first check for `existing issues`_, including
-  closed issues.
+* Before you submit a new issue, try `asking for help`_ first.
+* If determined to create a new issue, first search `Pelican Discussions`_
+  and `existing issues`_ (open and closed) to see if your question has already
+  been answered previously.
 
 .. _`asking for help`: `How to get help`_
+.. _`Pelican Discussions`: https://github.com/getpelican/pelican/discussions
 .. _`existing issues`: https://github.com/getpelican/pelican/issues
 
 How to get help
@@ -18,7 +20,7 @@ Before you ask for help, please make sure you do the following:
    you read the docs for the Pelican version you are using.
 2. Use a search engine (e.g., DuckDuckGo, Google) to search for a solution to
    your problem. Someone may have already found a solution, perhaps in the
-   form of a plugin_ or a specific combination of settings.
+   form of a ':pelican-doc:`plugins` or a specific combination of settings.
 
 3. Try reproducing the issue in a clean environment, ensuring you are using:
 
@@ -26,15 +28,20 @@ Before you ask for help, please make sure you do the following:
 * latest releases of libraries used by Pelican
 * no plugins or only those related to the issue
 
-**NOTE:** The most common sources of problems are anomalies in (1) themes,
-(2) settings files, and (3) ``make``/``invoke`` automation wrappers. If you can't
-reproduce your problem when using the following steps to generate your site,
-then the problem is almost certainly with your chosen theme and/or settings
-file (and not Pelican itself)::
+**NOTE:** The most common sources of problems are anomalies in (1) themes, (2)
+plugins, (3) settings files, and (4) ``make``/``invoke`` automation wrappers.
+If you can't reproduce your problem when using the following steps to generate
+your site, then the problem is almost certainly with one of the above-listed
+elements (and not Pelican itself)::
 
     cd ~/projects/your-site
     git clone https://github.com/getpelican/pelican ~/projects/pelican
     pelican content -s ~/projects/pelican/samples/pelican.conf.py -t ~/projects/pelican/pelican/themes/notmyidea
+
+If you can generate your site without problems using the steps above, then your
+problem is unlikely to be caused by Pelican itself, and therefore please
+consider reaching out to the maintainers of the plugins/theme you are using
+instead of raising the topic with the Pelican core community.
 
 If despite the above efforts you still cannot resolve your problem, be sure to
 include in your inquiry the following information, preferably in the form of
@@ -59,26 +66,10 @@ publicly-accessible location:
   the ``--debug`` flag: ``pelican --debug content [...]``)
 
 .. _documentation: https://docs.getpelican.com/
-.. _`paste service`: https://dpaste.de/
+.. _`paste service`: https://dpaste.com
 
-Once the above preparation is ready, you can contact people willing to help via
-(preferably) the ``#pelican`` IRC channel or send a message to ``authors at getpelican dot com``.
-Remember to include all the information you prepared.
-
-The #pelican IRC channel
-------------------------
-
-* Because of differing time zones, you may not get an immediate response to your
-  question, but please be patient and stay logged into IRC — someone will almost
-  always respond if you wait long enough (it may take a few hours).
-* If you don't have an IRC client handy, use the webchat_.
-* You can direct your IRC client to the channel using this `IRC link`_ or you
-  can manually join the ``#pelican`` IRC channel on the `freenode IRC network`_.
-
-.. _webchat: https://kiwiirc.com/client/irc.freenode.net/?#pelican
-.. _`IRC link`: irc://irc.freenode.net/pelican
-.. _`freenode IRC network`: https://freenode.net/
-
+Once the above preparation is ready, you can post your query as a new thread in
+`Pelican Discussions`_. Remember to include all the information you prepared.
 
 Contributing code
 =================
@@ -86,17 +77,22 @@ Contributing code
 Before you submit a contribution, please ask whether it is desired so that you
 don't spend a lot of time working on something that would be rejected for a
 known reason. Consider also whether your new feature might be better suited as
-a plugin_ — you can `ask for help`_  to make that determination.
+a ':pelican-doc:`plugins` — you can `ask for help`_  to make that determination.
+
+Also, if you intend to submit a pull request to address something for which there
+is no existing issue, there is no need to create a new issue and then immediately
+submit a pull request that closes it. You can submit the pull request by itself.
 
 Using Git and GitHub
 --------------------
 
-* `Create a new git branch`_ specific to your change (as opposed to making
+* `Create a new branch`_ specific to your change (as opposed to making
   your commits in the master branch).
 * **Don't put multiple unrelated fixes/features in the same branch / pull request.**
   For example, if you're working on a new feature and find a bugfix that
   doesn't *require* your new feature, **make a new distinct branch and pull
-  request** for the bugfix.
+  request** for the bugfix. Similarly, any proposed changes to code style
+  formatting should be in a completely separate pull request.
 * Add a ``RELEASE.md`` file in the root of the project that contains the
   release type (major, minor, patch) and a summary of the changes that will be
   used as the release changelog entry. For example::
@@ -115,15 +111,8 @@ Using Git and GitHub
   detailed explanation (when relevant).
 * `Squash your commits`_ to eliminate merge commits and ensure a clean and
   readable commit history.
-* If you have previously filed a GitHub issue and want to contribute code that
-  addresses that issue, **please use** ``hub pull-request`` instead of using
-  GitHub's web UI to submit the pull request. This isn't an absolute
-  requirement, but makes the maintainers' lives much easier! Specifically:
-  `install hub <https://github.com/github/hub/#installation>`_ and then run
-  `hub pull-request -i [ISSUE] <https://hub.github.com/hub-pull-request.1.html>`_
-  to turn your GitHub issue into a pull request containing your code.
 * After you have issued a pull request, the continuous integration (CI) system
-  will run the test suite for all supported Python versions and check for PEP8
+  will run the test suite on all supported Python versions and check for code style
   compliance. If any of these checks fail, you should fix them. (If tests fail
   on the CI system but seem to pass locally, ensure that local test runs aren't
   skipping any tests.)
@@ -131,28 +120,20 @@ Using Git and GitHub
 Contribution quality standards
 ------------------------------
 
-* Adhere to `PEP8 coding standards`_. This can be eased via the `pycodestyle
-  <https://pypi.org/project/pycodestyle>`_ or `flake8
-  <https://pypi.org/project/flake8/>`_ tools, the latter of which in
-  particular will give you some useful hints about ways in which the
-  code/formatting can be improved. We try to keep line length within the
-  79-character maximum specified by PEP8. Because that can sometimes compromise
-  readability, the hard/enforced maximum is 88 characters.
+* Adhere to the project's code style standards. See: `Development Environment`_
 * Ensure your code is compatible with the `officially-supported Python releases`_.
 * Add docs and tests for your changes. Undocumented and untested features will
   not be accepted.
-* `Run all the tests`_ **on all versions of Python supported by Pelican** to
-  ensure nothing was accidentally broken.
+* :pelican-doc:`Run all the tests <contribute>` **on all versions of Python
+  supported by Pelican** to ensure nothing was accidentally broken.
 
 Check out our `Git Tips`_ page or `ask for help`_ if you
 need assistance or have any questions about these guidelines.
 
 .. _`plugin`: https://docs.getpelican.com/en/latest/plugins.html
-.. _`#pelican IRC channel`: https://webchat.freenode.net/?channels=pelican&uio=d4
-.. _`Create a new git branch`: https://github.com/getpelican/pelican/wiki/Git-Tips#making-your-changes
+.. _`Create a new branch`: https://github.com/getpelican/pelican/wiki/Git-Tips#making-your-changes
 .. _`Squash your commits`: https://github.com/getpelican/pelican/wiki/Git-Tips#squashing-commits
-.. _`Run all the tests`: https://docs.getpelican.com/en/latest/contribute.html#running-the-test-suite
 .. _`Git Tips`: https://github.com/getpelican/pelican/wiki/Git-Tips
-.. _`PEP8 coding standards`: https://www.python.org/dev/peps/pep-0008/
 .. _`ask for help`: `How to get help`_
-.. _`officially-supported Python releases`: https://devguide.python.org/#status-of-python-branches
+.. _`Development Environment`: https://docs.getpelican.com/en/latest/contribute.html#setting-up-the-development-environment
+.. _`officially-supported Python releases`: https://devguide.python.org/versions/#versions

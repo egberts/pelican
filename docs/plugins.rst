@@ -12,8 +12,8 @@ How to use plugins
 Starting with version 4.5, Pelican moved to a new plugin structure utilizing
 namespace packages that can be easily installed via Pip_. Plugins supporting
 this structure will install under the namespace package ``pelican.plugins`` and
-can be automatically discovered by Pelican. To see a list of plugins that are
-active in your environment, run::
+can be automatically discovered by Pelican. To see a list of Pip-installed
+namespace plugins that are active in your environment, run::
 
     pelican-plugins
 
@@ -94,9 +94,12 @@ which you map the signals to your plugin logic. Let's take a simple example::
     your ``register`` callable or they will be garbage-collected before the
     signal is emitted.
 
-If multiple plugins connect to the same signal, there is no way to guarantee or
-control in which order the plugins will be executed. This is a limitation
-inherited from Blinker_, the dependency Pelican uses to implement signals.
+If multiple plugins connect to the same signal, plugins will be executed in the
+order they are connected. With ``PLUGINS`` setting, order will be as defined in
+the setting. If you rely on auto-discovered namespace plugins, no ``PLUGINS``
+setting, they will be connected in the same order they are discovered (same
+order as ``pelican-plugins`` output). If you want to specify the order
+explicitly, disable auto-discovery by defining ``PLUGINS`` in the desired order.
 
 Namespace plugin structure
 --------------------------
@@ -274,6 +277,70 @@ Adding a new generator is also really easy. You might want to have a look at
         signals.get_generators.connect(get_generators)
 
 
+Adding a new writer
+-------------------
+
+Adding a writer will allow you to output additional file formats to disk, or
+change how the existing formats are written to disk. Note that only one writer
+will be active at a time, so be sure to either subclass the built-in Writer, or
+completely re-implement it.
+
+Here is a basic example of how to set up your own writer::
+
+    from pelican.writers import Writer
+    from pelican import signals
+
+    class MyWriter(Writer):
+        # define new writer functionality
+        pass
+
+
+    def add_writer(pelican_object):
+        # use pelican_instance to setup stuff if needed
+        return MyWriter
+
+
+    def register():
+        signals.get_writer.connect(add_writer)
+
+
+Using Plugins to Inject Content
+-------------------------------
+
+You can programmatically inject articles or pages using plugins. This can be
+useful if you plan to fetch articles from an API, for example.
+
+Following is a simple example of how one can build a plugin that injects a
+custom article, using the ``article_generator_pretaxonomy`` signal::
+
+    import datetime
+
+    from pelican import signals
+    from pelican.contents import Article
+    from pelican.readers import BaseReader
+
+    def addArticle(articleGenerator):
+        settings = articleGenerator.settings
+
+        # Author, category, and tags are objects, not strings, so they need to
+        # be handled using BaseReader's process_metadata() function.
+        baseReader = BaseReader(settings)
+
+        content = "I am the body of an injected article!"
+
+        newArticle = Article(content, {
+            "title": "Injected Article!",
+            "date": datetime.datetime.now(),
+            "category": baseReader.process_metadata("category", "fromAPI"),
+            "tags": baseReader.process_metadata("tags", "tagA, tagB")
+        })
+
+        articleGenerator.articles.insert(0, newArticle)
+
+    def register():
+        signals.article_generator_pretaxonomy.connect(addArticle)
+
+
+
 .. _Pip: https://pip.pypa.io/
 .. _pelican-plugins bug #314: https://github.com/getpelican/pelican-plugins/issues/314
-.. _Blinker: https://pythonhosted.org/blinker/

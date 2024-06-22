@@ -18,18 +18,6 @@ folder, using the default theme to produce a simple site. The default theme
 consists of very simple HTML without styling and is provided so folks may use
 it as a basis for creating their own themes.
 
-When working on a single article or page, it is possible to generate only the
-file that corresponds to that content. To do this, use the ``--write-selected``
-argument, like so::
-
-    pelican --write-selected output/posts/my-post-title.html
-
-Note that you must specify the path to the generated *output* file — not the
-source content. To determine the output file name and location, use the
-``--debug`` flag. If desired, ``--write-selected`` can take a comma-separated
-list of paths or can be configured as a setting. (See:
-:ref:`writing_only_selected_content`)
-
 You can also tell Pelican to watch for your modifications, instead of manually
 re-running it every time you want to see your changes. To enable this, run the
 ``pelican`` command with the ``-r`` or ``--autoreload`` option. On non-Windows
@@ -67,7 +55,7 @@ Deployment
 
 After you have generated your site, previewed it in your local development
 environment, and are ready to deploy it to production, you might first
-re-generate your site with any production-specific settings (e.g., analytics
+re-generate your site with any production-specific settings (e.g., analytics,
 feeds, etc.) that you may have defined::
 
     pelican content -s publishconf.py
@@ -104,7 +92,7 @@ information gleaned from other answers provided during the
 ``pelican-quickstart`` process, are meant as a starting point and should be
 customized to fit your particular needs and usage patterns. If you find one or
 both of these automation tools to be of limited utility, these files can
-deleted at any time and will not affect usage of the canonical ``pelican``
+be deleted at any time and will not affect usage of the canonical ``pelican``
 command.
 
 Following are automation tools that "wrap" the ``pelican`` command and can
