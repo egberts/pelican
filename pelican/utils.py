@@ -29,6 +29,7 @@ from typing import (
 )
 
 import dateutil.parser
+from watchfiles import Change
 
 try:
     from zoneinfo import ZoneInfo
@@ -39,7 +40,6 @@ from markupsafe import Markup
 
 if TYPE_CHECKING:
     from pelican.contents import Content
-    from pelican.readers import Readers
     from pelican.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -631,6 +631,25 @@ def truncate_html_words(s: str, num: int, end_text: str = "…") -> str:
     return out
 
 
+def truncate_html_paragraphs(s, count):
+    """Truncate HTML to a certain number of paragraphs.
+
+    :param count: number of paragraphs to keep
+
+    Newlines in the HTML are preserved.
+    """
+    paragraphs = []
+    tag_stop = 0
+    substr = s[:]
+    for _ in range(count):
+        substr = substr[tag_stop:]
+        tag_start = substr.find("<p>")
+        tag_stop = substr.find("</p>") + len("</p>")
+        paragraphs.append(substr[tag_start:tag_stop])
+
+    return "".join(paragraphs)
+
+
 def process_translations(
     content_list: list[Content],
     translation_id: str | Collection[str] | None = None,
@@ -797,9 +816,8 @@ def order_content(
 
 def wait_for_changes(
     settings_file: str,
-    reader_class: type[Readers],
     settings: Settings,
-):
+) -> set[tuple[Change, str]]:
     content_path = settings.get("PATH", "")
     theme_path = settings.get("THEME", "")
     ignore_files = {
@@ -924,3 +942,13 @@ def temporary_locale(
         locale.setlocale(lc_category, temp_locale)
     yield
     locale.setlocale(lc_category, orig_locale)
+
+
+def file_suffix(path: str) -> str:
+    """Return the suffix of a filename in a path."""
+    _, ext = os.path.splitext(os.path.basename(path))
+    ret = ""
+    if len(ext) > 1:
+        # drop the ".", e.g., "exe", not ".exe"
+        ret = ext[1:]
+    return ret
