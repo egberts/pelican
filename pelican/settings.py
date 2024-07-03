@@ -15,6 +15,15 @@ from pelican.log import LimitFilter
 
 
 def load_source(name: str, path: str) -> ModuleType:
+    """
+    perform dynamic (re)loading of configuration settings file
+    (ie., pelicanconf.py/publishconf.py)
+
+    :param conf_filespec:  path to the Pelican configuration settings Puthon file.
+    :type conf_filespec: Path
+    :return: the module type of this Pelican configuration settings 'module'
+    :rtype: ModuleType
+    """
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
@@ -230,6 +239,16 @@ def read_settings(
 
 def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
     """Loads settings from a module, returns a dictionary."""
+    """Loads settings from a module, returns a dictionary.
+
+    Takes all the settings from the Python script file and store it
+    in a context dictionary
+
+    :param module: optional Module Type, can be None.
+    :type module: ModuleType
+    :return: Returns a context dictionary from the Pelican configuration settings file.
+    :rtype: Settings, Dict[str, Any]
+    """
 
     context = {}
     if module is not None:
@@ -238,8 +257,13 @@ def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
 
 
 def get_settings_from_file(path: str) -> Settings:
-    """Loads settings from a file path, returning a dict."""
+    """Loads settings from a file path, returning a ModuleType.
 
+    :param path: The file specification to the Pelican configuration settings file
+    :type path: str
+    :return: the Pelican configuration settings
+    :rtype: Settings
+    """
     name, ext = os.path.splitext(os.path.basename(path))
     module = load_source(name, path)
     return get_settings_from_module(module)
