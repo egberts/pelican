@@ -18,32 +18,62 @@ from typing import Any, Dict, Optional
 from pelican.log import LimitFilter
 
 
-def load_source(module_name: str, conf_filespec: Path) -> ModuleType | None:
+###def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType | None:
+def load_source(path: str):
     """
     Loads the Python-syntax file as a module for application access
 
-    :param module_name: Name of the Python module to be loaded.
+    Only `path` shall be consulted for its actual file location.
+
+    If module_name is not supplied as an argument, then its module name
+    shall be extracted from given `path` argument but without any directory
+    nor its file extension (just the basic pathLib.Path(path).stem part).
+
+    This function substitutes Python built-in `importlib` but with one distinctive
+    but different feature:  No attempts are made to leverage the `PYTHONPATH` as an
+    alternative multi-directory search of a specified module name;
+    only singular-directory lookup/search is supported here.
+
+    :param path: filespec of the Python script file to load as Python module;
+                 `path` parameter may be a filename which is looked for in the
+                 current working directory, or a relative filename that looks
+                 only in that particular directory, or an absolute filename
+                 that also looks only in that absolute directory.
+    :type path: str | pathlib.Path
+    :param module_name: Optional argument to the Python module name to be loaded.
+                        `module_name` shall never use dotted notation nor any
+                        directory separator, just the plain filename (without
+                        any extension/suffix part).
     :type module_name: str
-    :param conf_filespec: absolute or relative filespec of the Python file to load
-    :type conf_filespec: pathlib.Path
-    :return: the ModuleType of the loaded Python module file.
+    :return: the ModuleType of the loaded Python module file.  Will be
+            accessible in a form of "pelican.<module_name>".
     :rtype: ModuleType | None
     """
+    if isinstance(path, str):
+        conf_filespec = pathlib.Path(path)
+    elif type(path) is pathlib.Path:
+        conf_filespec = path
+    else:
+        logger.fatal(
+            f"argument {path.__str__()} is not a pathLib.Path " "type nor a str type."
+        )
+        raise TypeError
+
     absolute_filespec = conf_filespec.absolute()
     filename_ext = conf_filespec.name
-    if not conf_filespec.exists():
+    if not absolute_filespec.exists():
         logger.error(f"File '{filename_ext!s}' not found.")
         return None
-    if not conf_filespec.is_file():
-        logger.error(f"Absolute '{conf_filespec!s}' filespec is not a file.")
+    if not absolute_filespec.is_file():
+        logger.error(f"Absolute '{conf_filespec!s}' path is not a file.")
         return None
-    if not os.access(str(conf_filespec), os.R_OK):
+    if not os.access(str(absolute_filespec), os.R_OK):
         logger.error(f"'{absolute_filespec}' file is not readable.")
         return None
     resolved_absolute_filespec = absolute_filespec.resolve(strict=True)
 
     # We used to strip '.py' extension to make a module name out of it
-    # But we cannot take in anymore the user-supplied filespec for anything
+    # But we cannot take in anymore the user-supplied path for anything
     #   (such as Pelican configuration settings file) as THE Python module
     #   name for Pelican due to potential conflict with 300+ names of Python
     #   built-in system module, such as `site.conf`, `calendar.conf`.
@@ -52,6 +82,16 @@ def load_source(module_name: str, conf_filespec: Path) -> ModuleType | None:
     # statically fixed module_name to be associated with the end-user's choice
     # of configuration filename.
 
+    if "module_name" not in locals():
+        module_name = pathlib.Path(path).stem
+    elif module_name is None:
+        logger.warning(
+            f"Module name is missing; Python built-in to check "
+            f"PYTHONPATH for {absolute_filespec}"
+        )
+    elif module_name == "":
+        module_name = pathlib.Path(path).stem
+
     # Nonetheless, we check that this module_name is not taken as well.
     # Check that the module name is not in sys.module (like pathlib!!!)
     if module_name in sys.modules:
@@ -59,7 +99,10 @@ def load_source(module_name: str, conf_filespec: Path) -> ModuleType | None:
             f"Cannot reserved the module name already used"
             f" by Python system module `{module_name}`."
         )
-        sys.exit(3)
+        sys.exit(errno.EPERM)
+
+    #    if module_name == "":
+    #        module_name = "pelicanconf"
 
     try:
         # Using Python importlib, find the module using a full file path
@@ -341,7 +384,7 @@ def get_settings_from_file(path: str) -> Settings:
 
     path_filespec = pathlib.Path(path)
     absolute_path_filespec = path_filespec.absolute()
-    module = load_source("pelicanconf", path_filespec)
+    module = load_source(path)
     if module is not None:
         logger.info(
             f"Loaded configuration settings from '{absolute_path_filespec}' file."
