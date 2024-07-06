@@ -1,11 +1,15 @@
 import copy
+import errno
+import importlib.machinery
 import importlib.util
 import inspect
 import locale
 import logging
 import os
+import pathlib
 import re
 import sys
+from logging import Logger
 from os.path import isabs
 from pathlib import Path
 from types import ModuleType
@@ -14,15 +18,110 @@ from typing import Any, Dict, Optional
 from pelican.log import LimitFilter
 
 
-def load_source(name: str, path: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+def load_source(module_name: str, conf_filespec: Path) -> ModuleType | None:
+    """
+    Loads the Python-syntax file as a module for application access
+
+    :param module_name: Name of the Python module to be loaded.
+    :type module_name: str
+    :param conf_filespec: absolute or relative filespec of the Python file to load
+    :type conf_filespec: pathlib.Path
+    :return: the ModuleType of the loaded Python module file.
+    :rtype: ModuleType | None
+    """
+    absolute_filespec = conf_filespec.absolute()
+    filename_ext = conf_filespec.name
+    if not conf_filespec.exists():
+        logger.error(f"File '{filename_ext!s}' not found.")
+        return None
+    if not conf_filespec.is_file():
+        logger.error(f"Absolute '{conf_filespec!s}' filespec is not a file.")
+        return None
+    if not os.access(str(conf_filespec), os.R_OK):
+        logger.error(f"'{absolute_filespec}' file is not readable.")
+        return None
+    resolved_absolute_filespec = absolute_filespec.resolve(strict=True)
+
+    # We used to strip '.py' extension to make a module name out of it
+    # But we cannot take in anymore the user-supplied filespec for anything
+    #   (such as Pelican configuration settings file) as THE Python module
+    #   name for Pelican due to potential conflict with 300+ names of Python
+    #   built-in system module, such as `site.conf`, `calendar.conf`.
+    #   A complete list is in https://docs.python.org/3/py-modindex.html.
+    # Instead, force the caller of load_source to supply a Pelican-specific but
+    # statically fixed module_name to be associated with the end-user's choice
+    # of configuration filename.
+
+    # Nonetheless, we check that this module_name is not taken as well.
+    # Check that the module name is not in sys.module (like pathlib!!!)
+    if module_name in sys.modules:
+        logger.fatal(
+            f"Cannot reserved the module name already used"
+            f" by Python system module `{module_name}`."
+        )
+        sys.exit(3)
+
+    try:
+        # Using Python importlib, find the module using a full file path
+        # specification and its filename and return this Module instance
+        module_spec = importlib.util.spec_from_file_location(
+            module_name, resolved_absolute_filespec
+        )
+        logger.debug(f"ModuleSpec '{module_name}' obtained from {absolute_filespec}.")
+    except ImportError:
+        logger.fatal(
+            f"Location {resolved_absolute_filespec} may be missing a "
+            f"module `get_filename` attribute value."
+        )
+        raise ModuleNotFoundError from ImportError
+    except OSError:
+        logger.error(
+            f"Python module loader for configuration settings file "
+            f"cannot determine absolute directory path from {absolute_filespec}."
+        )
+        raise FileNotFoundError from OSError
+    # pass all the other excepts out
+
+    try:
+        # With the ModuleSpec object, we can get the
+        module_type = importlib.util.module_from_spec(module_spec)
+    except ImportError:
+        logger.fatal(
+            "Loader that defines exec_module() must also define create_module()"
+        )
+        raise ImportError from ImportError
+
+    # module_type also has all the loaded Python values/objects from
+    # the Pelican configuration settings file, but it is not
+    # yet readable for all...
+
+    # store the module into the sys.modules
+    sys.modules[module_name] = module_type
+
+    try:
+        # finally, execute any codes in the Pelican configuration settings file.
+        module_spec.loader.exec_module(module_type)
+        logger.debug(
+            f"Loaded module '{module_name}' from {resolved_absolute_filespec} file"
+        )
+        return module_type
+    except SyntaxError as e:
+        full_filespec = conf_filespec.resolve(strict=True)
+        logger.error(
+            f"{e}.\nHINT: "
+            f"Try executing `python {full_filespec}` "
+            f"for better syntax troubleshooting."
+        )
+        sys.exit(errno.ENOEXEC)
+    except Any as e:
+        logger.critical(
+            f"'Python system module loader for {resolved_absolute_filespec}'"
+            f" module failed: {e}."
+        )
+        sys.exit(errno.ENOEXEC)
 
 
-logger = logging.getLogger(__name__)
+logger: Logger = logging.getLogger(__name__)
 
 Settings = Dict[str, Any]
 
@@ -217,7 +316,7 @@ def read_settings(
             ]
 
     settings = dict(copy.deepcopy(DEFAULT_CONFIG), **settings)
-    settings = configure_settings(settings)
+    settings = configure_settings(settings, path)
 
     # This is because there doesn't seem to be a way to pass extra
     # parameters to docutils directive handlers, so we have to have a
@@ -231,7 +330,7 @@ def read_settings(
 def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
     """Loads settings from a module, returns a dictionary."""
 
-    context = {}
+    context: Settings = {}
     if module is not None:
         context.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
     return context
@@ -240,8 +339,20 @@ def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
 def get_settings_from_file(path: str) -> Settings:
     """Loads settings from a file path, returning a dict."""
 
-    name, ext = os.path.splitext(os.path.basename(path))
-    module = load_source(name, path)
+    path_filespec = pathlib.Path(path)
+    absolute_path_filespec = path_filespec.absolute()
+    module = load_source("pelicanconf", path_filespec)
+    if module is not None:
+        logger.info(
+            f"Loaded configuration settings from '{absolute_path_filespec}' file."
+        )
+    else:
+        logger.error(
+            f"Failed to load {absolute_path_filespec} configuration settings file."
+        )
+        sys.exit(errno.ENOENT)
+    # since the module of configuration settings got loaded, lets make a copy
+    # and store it as context
     return get_settings_from_module(module)
 
 
@@ -568,13 +679,14 @@ def handle_deprecated_settings(settings: Settings) -> Settings:
     return settings
 
 
-def configure_settings(settings: Settings) -> Settings:
+def configure_settings(settings: Settings, path: str) -> Settings:
     """Provide optimizations, error checking, and warnings for the given
     settings.
     Also, specify the log messages to be ignored.
     """
     if "PATH" not in settings or not os.path.isdir(settings["PATH"]):
         raise Exception(
+            f"`PATH` object in {path} is undefined. "
             "You need to specify a path containing the content"
             " (see pelican --help for more information)"
         )
@@ -613,7 +725,7 @@ def configure_settings(settings: Settings) -> Settings:
     ]:
         if key in settings and not isinstance(settings[key], types):
             value = settings.pop(key)
-            logger.warn(
+            logger.warning(
                 "Detected misconfigured %s (%s), falling back to the default (%s)",
                 key,
                 value,
