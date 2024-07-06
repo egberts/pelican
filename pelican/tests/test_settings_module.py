@@ -40,7 +40,7 @@ class TestSettingsPart2(unittest.TestCase):
         self.old_locale = locale.setlocale(locale.LC_ALL)
         locale.setlocale(locale.LC_ALL, "C")
         self.PATH = abspath(dirname(__file__))
-        default_conf = join(self.PATH, "default_conf.py")  # NOQA
+        self.default_conf = join(self.PATH, "default_conf.py")
         # each unit test will do the reading of settings
 
     def tearDown(self):
