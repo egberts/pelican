@@ -132,7 +132,9 @@ if PC_MODNAME_ACTUAL in sys.modules:
 
 
 class TestSettingsModuleName(unittest.TestCase):
-    """Exercises both the path and module_name arguments"""
+    """load_source() with module_name argument"""
+
+    # Exercises both the path and module_name arguments"""
 
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
@@ -181,33 +183,33 @@ class TestSettingsModuleName(unittest.TestCase):
 
     # Blank arguments test series, by path argument, str type
     def test_load_source_str_all_blank_fail(self):
-        """load_source; arguments all blank; path str; failing mode"""
+        """arguments all blank; path str; failing mode"""
         """Supply blank string to each arguments and fail"""
         module_name = ""
         filespec_blank: str = ""
-        module_spec = load_source(filespec_blank, module_name)
+        module_spec = load_source(filespec_blank, module_name)  # NOQA: RUF100
         assert module_spec is None
 
     # Proper combinatorial - Focusing firstly on the path argument using str type
     def test_load_source_str_rel_dotted_fail(self):
-        """load_source; dotted directory; path str; blank module; failing mode"""
+        """dotted directory; path str; blank module; failing mode"""
         module_name = ""
         str_filespec_dotted: str = "."
-        module_spec = load_source(str_filespec_dotted, module_name)
+        module_spec = load_source(str_filespec_dotted, module_name)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_rel_parent_fail(self):
-        """load_source; relative parent; path str; blank module; failing mode"""
+        """relative parent; path str; blank module; failing mode"""
         module_name = ""
         str_filespec_parent: str = ".."
-        module_spec = load_source(str_filespec_parent, module_name)
+        module_spec = load_source(str_filespec_parent, module_name)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_anchor_fail(self):
-        """load_source; anchor directory; path str; blank module; failing mode"""
+        """anchor directory; path str; blank module; failing mode"""
         module_name = ""
         str_filespec_anchor: str = os.sep
-        module_spec = load_source(str_filespec_anchor, module_name)
+        module_spec = load_source(str_filespec_anchor, module_name)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_cwd_fail(self):

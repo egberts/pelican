@@ -62,7 +62,7 @@ class TestSettingsLoadSource(unittest.TestCase):
     def test_load_source_arg_missing_fail(self):
         """missing arguments; failing mode"""
         with pytest.raises(TypeError) as sample:
-            load_source()
+            load_source()  # noqa: RUF100
         assert sample.type == TypeError
         # assert sample.value.code only exists for SystemExit
 
@@ -79,14 +79,14 @@ class TestSettingsLoadSource(unittest.TestCase):
     def test_load_source_wrong_arg_fail(self):
         """wrong argument name (variant 1); failing mode"""
         with pytest.raises(TypeError) as sample:
-            load_source(no_such_arg="reject this")
+            load_source(no_such_arg="reject this")  # NOQA: RUF100
         assert sample.type == TypeError
         # assert sample.value.code only exists for SystemExit
 
     def test_load_source_arg_unexpected_fail(self):
         """wrong argument name (variant 2), failing mode"""
         with pytest.raises(TypeError) as sample:
-            load_source(pathway="reject this")
+            load_source(pathway="reject this")  # NOQA: RUF100
         assert sample.type == TypeError
         # assert sample.value.code only exists for SystemExit
 
@@ -95,14 +95,14 @@ class TestSettingsLoadSource(unittest.TestCase):
         """invalid dict argument type; failing mode"""
         module_list = {}
         with pytest.raises(TypeError) as sample:
-            load_source(module_name=module_list)
+            load_source(module_name=module_list)  # NOQA: RUF100
         assert sample.type == TypeError
 
     def test_load_source_module_path_arg_missing_fail(self):
         """invalid list argument type; failing mode"""
         module_str = ""
         with pytest.raises(TypeError) as sample:
-            load_source(module_name=module_str)
+            load_source(module_name=module_str)  # NOQA: RUF100
         assert sample.type == TypeError
         # assert sample.value.code only exists for SystemExit
 
@@ -111,21 +111,21 @@ class TestSettingsLoadSource(unittest.TestCase):
         """invalid dict argument type with argument name; failing mode"""
         path_list = {}
         with pytest.raises(TypeError) as sample:
-            load_source(path=path_list)
+            load_source(path=path_list)  # NOQA: RUF100
         assert sample.type == TypeError
 
     def test_load_source_path_unexpected_type_dict_fail(self):
         """invalid list argument type w/ argument name=; failing mode"""
         path_dict = []
         with pytest.raises(TypeError) as sample:
-            load_source(path=path_dict)
+            load_source(path=path_dict)  # NOQA: RUF100
         assert sample.type == TypeError
 
     def test_load_source_path_unexpected_type_tuple_fail(self):
         """invalid tuple argument type w/ argument name=; failing mode"""
         path_tuple = ()
         with pytest.raises(TypeError) as sample:
-            load_source(path=path_tuple)
+            load_source(path=path_tuple)  # NOQA: RUF100
         assert sample.type == TypeError
 
     def test_load_source_path_valid_pelicanconf_py_pass(self):
@@ -146,7 +146,8 @@ class TestSettingsLoadSource(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             with pytest.raises(SystemExit) as sample:
                 self._caplog.clear()
-                load_source(tmp_path)  # ignore return value due to sys.exit()
+                load_source(tmp_path)  # NOQA: RUF100
+                # ignore return value due to sys.exit()
             assert "invalid syntax" in self._caplog.text
             assert sample.type == SystemExit
             assert sample.value.code == errno.ENOEXEC
