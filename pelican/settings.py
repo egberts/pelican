@@ -18,8 +18,7 @@ from typing import Any, Dict, Optional
 from pelican.log import LimitFilter
 
 
-###def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType | None:
-def load_source(path: str):
+def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType | None:
     """
     Loads the Python-syntax file as a module for application access
 
@@ -51,11 +50,11 @@ def load_source(path: str):
     """
     if isinstance(path, str):
         conf_filespec = pathlib.Path(path)
-    elif type(path) is pathlib.Path:
+    elif isinstance(path, pathlib.Path):
         conf_filespec = path
     else:
         logger.fatal(
-            f"argument {path.__str__()} is not a pathLib.Path " "type nor a str type."
+            f"argument {path.__str__()} is not a pathLib.Path type nor a str type."
         )
         raise TypeError
 
@@ -82,9 +81,10 @@ def load_source(path: str):
     # statically fixed module_name to be associated with the end-user's choice
     # of configuration filename.
 
+    module_name = ""
     if "module_name" not in locals():
         module_name = pathlib.Path(path).stem
-    elif module_name is None:
+    if module_name is None:
         logger.warning(
             f"Module name is missing; Python built-in to check "
             f"PYTHONPATH for {absolute_filespec}"
@@ -95,6 +95,7 @@ def load_source(path: str):
     # Nonetheless, we check that this module_name is not taken as well.
     # Check that the module name is not in sys.module (like pathlib!!!)
     if module_name in sys.modules:
+        # following logger.fatal is used as-is by test_settings_module.py unit test
         logger.fatal(
             f"Cannot reserved the module name already used"
             f" by Python system module `{module_name}`."
@@ -144,6 +145,7 @@ def load_source(path: str):
     try:
         # finally, execute any codes in the Pelican configuration settings file.
         module_spec.loader.exec_module(module_type)
+        # Below logger.debug is used as-is by test_settings_module.py unit-test
         logger.debug(
             f"Loaded module '{module_name}' from {resolved_absolute_filespec} file"
         )
