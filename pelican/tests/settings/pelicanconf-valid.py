@@ -1,5 +1,5 @@
 DEBUG = True
-# PATH = "content"   # our newly created location for our articles/pages to reside in/under
+PATH = "content"  # our newly created location for our articles/pages to reside in/under
 OUTPUT_PATH = "output"
 ARTICLES_PATH = ["articles"]
 PLUGIN_PATHS = [
