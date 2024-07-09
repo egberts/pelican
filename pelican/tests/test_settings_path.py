@@ -37,7 +37,7 @@ logging.root.setLevel(logging.DEBUG)
 log.propagate = True
 
 
-class TestSettingsLoadSource(unittest.TestCase):
+class TestSettingsLoadSourcePath(unittest.TestCase):
     """load_source"""
 
     # Provided a file, it should read it, replace the default values,

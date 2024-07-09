@@ -33,6 +33,11 @@ def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType |
     alternative multi-directory search of a specified module name;
     only singular-directory lookup/search is supported here.
 
+    WARNING to DEVELOPER: If you programmatically used the "from" reserved
+        Python keyword as in this "from pelicanconf import ..." statement, then you
+        will not be able to free up the pelicanconf module, much
+        less use 'reload module' features.  (Not a likely scenario, but)
+
     :param path: filespec of the Python script file to load as Python module;
                  `path` parameter may be a filename which is looked for in the
                  current working directory, or a relative filename that looks
@@ -81,16 +86,40 @@ def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType |
     # statically fixed module_name to be associated with the end-user's choice
     # of configuration filename.
 
-    module_name = ""
+    #    module_name = ""
     if "module_name" not in locals():
+        # old load_source(path) prototype
         module_name = pathlib.Path(path).stem
     if module_name is None:
         logger.warning(
-            f"Module name is missing; Python built-in to check "
+            f"Module name is missing; using Python built-in to check "
             f"PYTHONPATH for {absolute_filespec}"
         )
+    elif not isinstance(module_name, str):
+        raise TypeError
     elif module_name == "":
         module_name = pathlib.Path(path).stem
+
+    # One last thing to do before sys.modules check, is to deny any dotted module name
+    # This is a Pelican design issue (to support pelicanconf reloadability)
+    #
+    # Alternatively, do we want to support the approach of Python 'pelican.conf'
+    # module? Yes, but we couldn't, while it is the correct design to nest
+    # the configuration settings as a sub-module behind Pelican (we be should
+    # able to), but Pelican design is restricted by Python sys.modules design.
+    #
+    # Also, we lose reload() capability once the alternative desired design of
+    # 'conf' submodule gets loaded by Python 'from' keyword.
+    #
+    # Hence, we do not support 'pelican.conf' due to Pelican reloadability requirement
+    #
+    # Judge have ruled the 'period' symbol in module name as disallowable.
+    if "." in module_name:
+        # load_connect() should return sys.exit by design, but no.
+        # Below fatal log is used AS-IS by test_settings_module.py unit test
+        logger.fatal(f"Cannot use dotted module name such as `{module_name}`.")
+        # Nothing fancy, return None
+        return None
 
     # Nonetheless, we check that this module_name is not taken as well.
     # Check that the module name is not in sys.module (like pathlib!!!)
@@ -138,6 +167,9 @@ def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType |
     # module_type also has all the loaded Python values/objects from
     # the Pelican configuration settings file, but it is not
     # yet readable for all...
+
+    # if you have use "from pelicanconf import ...", then you will not
+    # be able to free up the module
 
     # store the module into the sys.modules
     sys.modules[module_name] = module_type
