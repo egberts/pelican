@@ -35,10 +35,10 @@ create arbitrary temporary directories from any other fixture or test.
 ## STDOUT/STDERR ##
 Outputs of Pelican can be had by using `--show-capture=[no/log/all/stderr/stdout]` to the pytest CLI.
 
-The capsys, capsysbinary, capfd, and capfdbinary fixtures allow access to
-stdout/stderr output created during test execution.
+The `capsys`, `capsysbinary`, `capfd`, and `capfdbinary` fixtures allow access
+to `STDOUT`/`STDERR` output created during test execution.
 
-Using caplog.clear() impacts ALL STDOUT capture across
+Using `caplog.clear()` impacts ALL `STDOUT` capture across
 all parallelized pytest unit tests.
 
 A simple method is:
@@ -85,8 +85,13 @@ There are three levels of entanglement as determined by `sys.getrefcount(my_modu
 the reference count that other modules make dependencies upon actually
 determines how one can remove an intricate, deeply-entrenched module.
 
-Last-always test to ensure no user modules are left behind as installed
-(DONE in tearDown() function)
+Last-always test to ensure no user-supplied modules are left behind as
+installed (DONE in `tearDown()` function).  Calling `configure_settings()` in
+pytest often requires a corresponding cleanup by calling
+
+```Python
+    del sys.modules[DEFAULT_MODULE_NAME]
+```
 
 To avoid all that Pelican module-"entanglement", we chose a different
 "top-level" module name thereby bypassing the module name `pelican`.
@@ -99,7 +104,7 @@ To reduce this excessive module reference count, a major rework on Pelican
 toward a singular but NON-CIRCULAR `import` would be required but this is not
 needed ... yet but may get broke in future `importlib`.
 
-Do a test that built-in modules remains left as untouched (DONE, tearDown())
+Do a test that built-in modules remains left as untouched (DONE, `tearDown()`)
 
 ## Multi-Process `pytest`
 Tests will crap out in N-processes if using `mktemp`, et al.; within `setUp()`.
