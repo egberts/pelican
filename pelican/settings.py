@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional
 from pelican.log import LimitFilter
 
 
-def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType | None:
+def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
     """
     Loads the Python-syntax file as a module for application access
 
@@ -44,11 +44,11 @@ def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType |
                  only in that particular directory, or an absolute filename
                  that also looks only in that absolute directory.
     :type path: str | pathlib.Path
-    :param module_name: Optional argument to the Python module name to be loaded.
-                        `module_name` shall never use dotted notation nor any
-                        directory separator, just the plain filename (without
-                        any extension/suffix part).
-    :type module_name: str
+    :param name: Optional argument to the Python module name to be loaded.
+                 `module_name` shall never use dotted notation nor any
+                 directory separator, just the plain filename (without
+                 any extension/suffix part).
+    :type name: str
     :return: the ModuleType of the loaded Python module file.  Will be
             accessible in a form of "pelican.<module_name>".
     :rtype: ModuleType | None
@@ -86,19 +86,22 @@ def load_source(path: str | pathlib.Path, module_name: str = "") -> ModuleType |
     # statically fixed module_name to be associated with the end-user's choice
     # of configuration filename.
 
-    #    module_name = ""
-    if "module_name" not in locals():
+    module_name = ""
+    if "name" not in locals():
         # old load_source(path) prototype
         module_name = pathlib.Path(path).stem
-    if module_name is None:
+
+    if name is None:
         logger.warning(
             f"Module name is missing; using Python built-in to check "
             f"PYTHONPATH for {absolute_filespec}"
         )
-    elif not isinstance(module_name, str):
+    elif not isinstance(name, str):
         raise TypeError
-    elif module_name == "":
+    elif name == "":
         module_name = pathlib.Path(path).stem
+    elif isinstance(name, str):
+        module_name = name
 
     # One last thing to do before sys.modules check, is to deny any dotted module name
     # This is a Pelican design issue (to support pelicanconf reloadability)

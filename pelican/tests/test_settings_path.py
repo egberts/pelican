@@ -68,12 +68,12 @@ class TestSettingsLoadSourcePath(unittest.TestCase):
 
     def test_load_source_path_str_blank_fail(self):
         """blank string argument; failing mode"""
-        module_type = load_source("")
+        module_type = load_source("", "")
         assert module_type is None
 
     def test_load_source_path_arg_str_blank_fail(self):
         """argument name with blank str; failing mode"""
-        module_type = load_source(path="")
+        module_type = load_source(name="", path="")
         assert module_type is None
 
     def test_load_source_wrong_arg_fail(self):
@@ -131,11 +131,11 @@ class TestSettingsLoadSourcePath(unittest.TestCase):
     def test_load_source_path_valid_pelicanconf_py_pass(self):
         """correct working function call; passing mode"""
         path: str = DIRSPEC_RELATIVE + PC_FULLNAME_VALID
-        module_type = load_source(path)
+        module_type = load_source(name="", path=path)  # extract module name from file
         assert module_type is not None
 
     #    @log_function_details
-    def test_load_source_path_pelicanconf_abc_syntax_error_fail(self):
+    def test_load_source_path_pelicanconf_abs_syntax_error_fail(self):
         """syntax error; absolute path; str type; failing mode"""
         # copy "pseudo-script" file to '/tmp' (ruff/black avoidance of syntax-error)
         path: str = DIRSPEC_RELATIVE + PC_FULLNAME_SYNTAX_ERROR + EXT_PYTHON_DISABLED
@@ -143,12 +143,15 @@ class TestSettingsLoadSourcePath(unittest.TestCase):
         Path(tmp_path).unlink(missing_ok=True)  # clean out old cruft
         # Copy mangled pseudo-Python file into temporary area as a Python file
         shutil.copyfile(path, tmp_path)
+
         with self._caplog.at_level(logging.DEBUG):
             with pytest.raises(SystemExit) as sample:
                 self._caplog.clear()
-                load_source(tmp_path)  # NOQA: RUF100
+
+                load_source(path=tmp_path, name="")  # NOQA: RUF100
                 # ignore return value due to sys.exit()
             assert "invalid syntax" in self._caplog.text
             assert sample.type == SystemExit
             assert sample.value.code == errno.ENOEXEC
+
         Path(tmp_path).unlink(missing_ok=True)

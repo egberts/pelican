@@ -164,7 +164,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # So logic within this setUp() is file-wide, not per-class.
 
         args = inspect.getfullargspec(load_source)
-        if ("module_name" not in args.args) and (
+        if ("name" not in args.args) and (
             args.args.__len__ != load_source_argument_count
         ):
             # Skip this entire test file if load_source() only supports 1 argument
@@ -206,7 +206,7 @@ class TestSettingsModuleName(unittest.TestCase):
         blank_filespec_str: str = ""
         module_name_str = ""
 
-        module_spec = load_source(blank_filespec_str, module_name_str)  # NOQA: RUF100
+        module_spec = load_source(module_name_str, blank_filespec_str)  # NOQA: RUF100
         assert module_spec is None
 
     # Proper combinatorial - Focusing firstly on the path argument using str type
@@ -215,7 +215,7 @@ class TestSettingsModuleName(unittest.TestCase):
         dotted_filespec_str: str = "."
         module_name_str = ""
 
-        module_spec = load_source(dotted_filespec_str, module_name_str)  # NOQA: RUF100
+        module_spec = load_source(module_name_str, dotted_filespec_str)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_rel_parent_fail(self):
@@ -224,7 +224,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(parent_filespec_str, module_name_str)  # NOQA: RUF100
+        module_spec = load_source(module_name_str, parent_filespec_str)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_anchor_fail(self):
@@ -233,7 +233,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(anchor_filespec_str, module_name_str)  # NOQA: RUF100
+        module_spec = load_source(module_name_str, anchor_filespec_str)  # NOQA: RUF100
         assert module_spec is None
 
     def test_load_source_str_cwd_fail(self):
@@ -242,7 +242,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(cwd_filespec_str, module_name_str)
+        module_spec = load_source(module_name_str, cwd_filespec_str)
         assert module_spec is None
 
     # Focusing on the path argument using Path type
@@ -253,7 +253,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(blank_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, blank_filespec_path)
         assert module_spec is None
 
     def test_load_source_path_dot_fail(self):
@@ -262,7 +262,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(dotted_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, dotted_filespec_path)
         assert module_spec is None
 
     def test_load_source_path_abs_anchor_fail(self):
@@ -271,7 +271,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(anchor_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, anchor_filespec_path)
         assert module_spec is None
 
     def test_load_source_path_rel_parent_fail(self):
@@ -280,7 +280,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(parent_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, parent_filespec_path)
         assert module_spec is None
 
     def test_load_source_path_abs_cwd_fail(self):
@@ -289,7 +289,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Let the load_source() determine its module name
         module_name_str = ""
 
-        module_spec = load_source(blank_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, blank_filespec_path)
         assert module_spec is None
 
     # Actually start to try using Pelican configuration file
@@ -314,7 +314,7 @@ class TestSettingsModuleName(unittest.TestCase):
             self._caplog.clear()
 
             # ignore return value due to sys.exit()
-            module_spec = load_source(valid_rel_filespec_str, module_name_str)
+            module_spec = load_source(module_name_str, valid_rel_filespec_str)
             assert module_spec is not None
             assert hasattr(module_spec, "PATH"), (
                 f"The {valid_rel_filespec_str} file did not provide a PATH "
@@ -344,7 +344,7 @@ class TestSettingsModuleName(unittest.TestCase):
         # Copy file to absolute temporary directory
         shutil.copy(RO_FILESPEC_REL_VALID_PATH, valid_abs_filespec_str)
 
-        module_spec = load_source(valid_abs_filespec_str, module_name_str)
+        module_spec = load_source(module_name_str, valid_abs_filespec_str)
         # check if PATH is defined inside a valid Pelican configuration settings file
         assert module_spec is not None
         assert hasattr(module_spec, "PATH"), (
@@ -372,7 +372,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(missing_rel_filespec_str, module_name_str)
+            module_spec = load_source(module_name_str, missing_rel_filespec_str)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -394,7 +394,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(notfound_abs_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, notfound_abs_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -422,11 +422,12 @@ class TestSettingsModuleName(unittest.TestCase):
             )
         noaccess_rel_filespec_path.touch()  # wonder if GitHub preserves no-read bit
         remove_read_permissions(noaccess_rel_filespec_path)
+        noaccess_rel_filespec_str = str(noaccess_rel_filespec_path)
         # File must exist; but one must check that it is unreadable there
-        if os.access(str(noaccess_rel_filespec_path), os.R_OK):
+        if os.access(noaccess_rel_filespec_str, os.R_OK):
             # Ouch, to change file perm bits or to absolute fail?  Fail here, instead.
             AssertionError(
-                f"Errant '{noaccess_rel_filespec_path!s} unexpectedly readable; FAILED"
+                f"Errant '{noaccess_rel_filespec_str} unexpectedly readable; FAILED"
             )
 
         # Let the load_source() determine its module name
@@ -439,7 +440,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(str(noaccess_rel_filespec_path), module_name_str)
+            module_spec = load_source(module_name_str, noaccess_rel_filespec_str)
             # but we have to check for a warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -487,7 +488,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(noaccess_abs_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, noaccess_abs_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -518,7 +519,7 @@ class TestSettingsModuleName(unittest.TestCase):
             # del module after ALL asserts, errnos, and STDOUT; before file removal
             del sys.modules[PC_FILENAME_VALID]
 
-        module_spec = load_source(valid_rel_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, valid_rel_filespec_path)
         # check if PATH is defined inside a valid Pelican configuration settings file
         assert module_spec is not None
         assert hasattr(module_spec, "PATH"), (
@@ -552,7 +553,7 @@ class TestSettingsModuleName(unittest.TestCase):
             # del module after ALL asserts, errnos, and STDOUT; before file removal
             del sys.modules[PC_MODNAME_VALID]
 
-        module_spec = load_source(valid_abs_filespec_path, module_name_str)
+        module_spec = load_source(module_name_str, valid_abs_filespec_path)
         # check if PATH is defined inside a valid Pelican configuration settings file
         assert module_spec is not None
         assert hasattr(module_spec, "PATH"), (
@@ -590,7 +591,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(notfound_rel_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, notfound_rel_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert " not found" in self._caplog.text
@@ -622,7 +623,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(missing_abs_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, missing_abs_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -663,7 +664,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(noaccess_rel_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, noaccess_rel_filespec_path)
             # but we have to check for a warning
             # message of 'assumed implicit module name'
             assert module_spec is None
@@ -712,7 +713,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(noaccess_abs_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, noaccess_abs_filespec_path)
             assert module_spec is None
             assert " is not readable" in self._caplog.text
 
@@ -751,7 +752,7 @@ class TestSettingsModuleName(unittest.TestCase):
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(valid_abs_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, valid_abs_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is not None
@@ -797,7 +798,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 self._caplog.clear()
 
                 # ignore return value due to sys.exit()
-                load_source(syntax_err_rel_filespec_str, module_name=module_name_str)
+                load_source(module_name_str, path=syntax_err_rel_filespec_str)
                 assert sample.type == SystemExit
                 assert sample.value.code == errno.ENOEXEC
             assert "invalid syntax" in self._caplog.text
@@ -845,7 +846,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 self._caplog.clear()
 
                 # ignore return value due to sys.exit()
-                load_source(syntax_err_abs_filespec_str, module_name_str)
+                load_source(module_name_str, syntax_err_abs_filespec_str)
                 assert sample.type == SystemExit
                 assert sample.value.code == errno.ENOEXEC
             assert "invalid syntax" in self._caplog.text
@@ -884,7 +885,7 @@ class TestSettingsModuleName(unittest.TestCase):
             #  Clear any STDOUT for our upcoming regex pattern test
             self._caplog.clear()
 
-            module_spec = load_source(valid_rel_filespec_path, module_name_str)
+            module_spec = load_source(module_name_str, valid_rel_filespec_path)
             # but we have to check for warning
             # message of 'assumed implicit module name'
             assert module_spec is not None
@@ -935,7 +936,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 self._caplog.clear()
 
                 # ignore return value due to sys.exit()
-                load_source(syntax_err_rel_filespec_path, module_name=module_name_str)
+                load_source(module_name_str, path=syntax_err_rel_filespec_path)
                 assert sample.type == SystemExit
                 assert sample.value.code == errno.ENOEXEC
             assert "invalid syntax" in self._caplog.text
@@ -983,7 +984,8 @@ class TestSettingsModuleName(unittest.TestCase):
 
                 # ignore return value due to sys.exit()
                 module_type = load_source(
-                    syntax_err_abs_filespec_path, module_name=module_name_str
+                    module_name_str,
+                    syntax_err_abs_filespec_path,
                 )
                 assert module_type is not None
                 assert sample.type == SystemExit
@@ -1009,7 +1011,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 f"Test setup error; module {module_not_exist} not "
                 "supposed to exist. Aborted"
             )
-        module_spec = load_source(valid_filespec, module_not_exist)
+        module_spec = load_source(module_not_exist, valid_filespec)
         # TODO Probably needs another assert here
         assert module_spec is not None
 
@@ -1027,13 +1029,15 @@ class TestSettingsModuleName(unittest.TestCase):
                 f"Module {module_name_taken_by_builtin} is not a built-in "
                 f"module; redefine PC_MONDNAME_SYS_BUILTIN"
             )
-        filespec_valid = RO_FILESPEC_REL_VALID_PATH
+        valid_rel_filespec_path = RO_FILESPEC_REL_VALID_PATH
         # Taking Python system builtin module is always a hard exit
         with self._caplog.at_level(logging.DEBUG):
             with pytest.raises(SystemExit) as sample:
                 self._caplog.clear()
 
-                module_spec = load_source(filespec_valid, module_name_taken_by_builtin)
+                module_spec = load_source(
+                    module_name_taken_by_builtin, valid_rel_filespec_path
+                )
                 # assert "taken by builtin" in self._caplog.text  # TODO add caplog here
                 assert sample.type == SystemExit
                 assert sample.value.code == errno.ENOEXEC
@@ -1050,12 +1054,12 @@ class TestSettingsModuleName(unittest.TestCase):
     def test_load_source_module_dotted_fail(self):
         """Dotted module name; valid relative file, Path type; failing mode"""
         dotted_module_name_str = PC_MODNAME_DOTTED
-        valid_rel_filespec_str = RO_FILESPEC_REL_VALID_PATH
+        valid_rel_filespec_str = str(RO_FILESPEC_REL_VALID_PATH)
         # Taking Python system builtin module is always a hard exit
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(valid_rel_filespec_str, dotted_module_name_str)
+            module_spec = load_source(dotted_module_name_str, valid_rel_filespec_str)
             assert module_spec is None
             assert "Cannot use dotted module name" in self._caplog.text
         # DO NOT PERFORM del sys.module[] here, this is an impossible dotted module
@@ -1063,7 +1067,7 @@ class TestSettingsModuleName(unittest.TestCase):
     def test_load_source_only_valid_module_str_fail(self):
         """only valid module_name, str type, failing mode"""
         #   don't let Pelican search all over the places using PYTHONPATH
-        module_spec = load_source(path="", module_name=str(PC_MODNAME_DEFAULT))
+        module_spec = load_source(name=str(PC_MODNAME_DEFAULT), path="")
         # not sure if STDERR capture is needed
         assert module_spec is None
         # TODO load_source() always always assert this SystemExit; add assert here?
