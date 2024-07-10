@@ -3,7 +3,8 @@
 
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
 
-# TODO: Last-always test to ensure no user modules are left installed and built-in modules are left untouched
+# TODO: Last-always test to ensure no user modules are left behind as installed
+# TODO: separately to test that built-in modules remaining left as untouched
 
 # There are three levels of entanglement as determined by `sys.getrefcount(my_module)`:
 #   1 - Easy to remove and reinstall using `importlib.reload`
@@ -12,6 +13,11 @@
 #           >>> del sys.modules["my_module"]
 #           >>> setattr(package, "empty", None)   # if circular dependencies
 #           >>> del my_module
+#   5-32 - That is Pelican; Pelican really makes it hard to remove a submodule.
+#          That is the sole reason why we do not put config under "pelican.conf".
+#          To avoid all that "entanglement", we chose "pelicanconf" (or "default_conf")
+#          To reduce this reference count, a major rework on Pelican toward a
+#          singular but NON-CIRCULAR `import` is required.
 #
 # This test crapped out in N-processes; mktemp, et. al. cannot be done within setUp()
 # mktemp, et. al. MUST BE performed within each procedure
@@ -183,25 +189,38 @@ class TestSettingsModuleName(unittest.TestCase):
             )
 
     def tearDown(self):
-        return
+        locale.setlocale(locale.LC_ALL, self.old_locale)
+        if PC_MODNAME_SYS_BUILTIN not in sys.modules:
+            AssertionError(
+                f"A built-in module named {PC_MODNAME_SYS_BUILTIN} got "
+                "deleted; test setup failed"
+            )
+        if PC_MODNAME_DEFAULT in sys.modules:
+            del sys.modules[PC_MODNAME_DEFAULT]
+            AssertionError(
+                f"One of many unittests did not remove {PC_MODNAME_DEFAULT} module."
+            )
+        if PC_MODNAME_VALID in sys.modules:
+            del sys.modules[PC_MODNAME_VALID]
+            AssertionError(
+                f"One of many unittests did not remove {PC_MODNAME_VALID} module."
+            )
+        if PC_MODNAME_UNREADABLE in sys.modules:
+            del sys.modules[PC_MODNAME_UNREADABLE]
+            AssertionError(
+                f"One of many unittests did not remove {PC_MODNAME_UNREADABLE} module."
+            )
+        if PC_MODNAME_NOT_EXIST in sys.modules:
+            del sys.modules[PC_MODNAME_NOT_EXIST]
+            AssertionError(
+                f"One of many unittests did not remove {PC_MODNAME_NOT_EXIST} module."
+            )
+        if PC_MODNAME_DOTTED in sys.modules:
+            del sys.modules[PC_MODNAME_DOTTED]
+            AssertionError(
+                f"One of many unittests did not remove {PC_MODNAME_DOTTED} module."
+            )
         # delete temporary directory?
-
-    #        try:
-    #            del sys.modules["pelicanconf"]
-    #        except:
-    #            pass
-    #        try:
-    #            del sys.modules["pelicanconf-valid"]
-    #        except:
-    #            pass
-    #        try:
-    #            del sys.modules["pelicanconf-unreadable"]
-    #        except:
-    #            pass
-    #        try:
-    #            del sys.modules["pelicanconf-syntax-error"]
-    #        except:
-    #            pass
 
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog):
