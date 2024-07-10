@@ -3,8 +3,6 @@
 
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
 
-# TODO: Last-always test to ensure no user modules are left behind as installed
-# TODO: separately to test that built-in modules remaining left as untouched
 
 # There are three levels of entanglement as determined by `sys.getrefcount(my_module)`:
 #   1 - Easy to remove and reinstall using `importlib.reload`
@@ -19,15 +17,6 @@
 #          To reduce this reference count, a major rework on Pelican toward a
 #          singular but NON-CIRCULAR `import` is required.
 #
-# This test crapped out in N-processes; mktemp, et. al. cannot be done within setUp()
-# mktemp, et. al. MUST BE performed within each procedure
-# until then, we cannot parallel-test this entire file, only 1-process test (DONE)
-
-# Cannot put cleanup of sys.modules in setUp()/tearDown() due to scoping, retention of
-# module's name across each test functions, due to parallelism of unit tests.
-
-# Using caplog.clear() impacts ALL STDOUT capture across
-# all parallelized PyTest unit tests.
 
 import errno
 import inspect
@@ -220,11 +209,11 @@ class TestSettingsModuleName(unittest.TestCase):
             AssertionError(
                 f"One of many unittests did not remove {PC_MODNAME_DOTTED} module."
             )
-        # delete temporary directory?
+        # TODO delete any straggling temporary directory?
 
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog):
-        """add support for performing assert in caplog.text output"""
+        """add support for an assert based on subpattern in caplog.text output"""
         self._caplog = caplog
 
     # Blank arguments test series, by path argument, str type
