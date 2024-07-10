@@ -552,15 +552,15 @@ def get_instance(args):
         config_file = DEFAULT_CONFIG_NAME
         args.settings = DEFAULT_CONFIG_NAME
 
-    settings = read_settings(config_file, override=get_config(args))
+    instance_settings = read_settings(config_file, override=get_config(args))
 
-    cls = settings["PELICAN_CLASS"]
+    cls = instance_settings["PELICAN_CLASS"]
     if isinstance(cls, str):
         module, cls_name = cls.rsplit(".", 1)
         module = __import__(module)
         cls = getattr(module, cls_name)
 
-    return cls(settings), settings
+    return cls(instance_settings), instance_settings
 
 
 def autoreload(args, excqueue=None):

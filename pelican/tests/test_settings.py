@@ -1,10 +1,12 @@
 import copy
 import locale
 import os
+import sys
 from os.path import abspath, dirname, join
 
 from pelican.settings import (
     DEFAULT_CONFIG,
+    DEFAULT_MODULE_NAME,
     DEFAULT_THEME,
     _printf_s_to_format_field,
     configure_settings,
@@ -25,12 +27,14 @@ class TestSettingsConfiguration(unittest.TestCase):
         locale.setlocale(locale.LC_ALL, "C")
         self.PATH = abspath(dirname(__file__))
         default_conf = join(self.PATH, "default_conf.py")
-        self.settings = read_settings(default_conf)
+        self.settings = read_settings(default_conf, reload=True)
 
     def tearDown(self):
         locale.setlocale(locale.LC_ALL, self.old_locale)
 
     def test_overwrite_existing_settings(self):
+        if DEFAULT_MODULE_NAME in sys.modules:
+            del sys.modules[DEFAULT_MODULE_NAME]
         self.assertEqual(self.settings.get("SITENAME"), "Alexis' log")
         self.assertEqual(self.settings.get("SITEURL"), "http://blog.notmyidea.org")
 
@@ -57,7 +61,7 @@ class TestSettingsConfiguration(unittest.TestCase):
 
     def test_settings_return_independent(self):
         # Make sure that the results from one settings call doesn't
-        # effect past or future instances.
+        # affect past or future instances.
         self.PATH = abspath(dirname(__file__))
         default_conf = join(self.PATH, "default_conf.py")
         settings = read_settings(default_conf)
@@ -105,6 +109,7 @@ class TestSettingsConfiguration(unittest.TestCase):
         self.assertEqual(settings["FEED_DOMAIN"], "http://blog.notmyidea.org")
 
         settings["FEED_DOMAIN"] = "http://feeds.example.com"
+
         configure_settings(settings)
         self.assertEqual(settings["FEED_DOMAIN"], "http://feeds.example.com")
 
