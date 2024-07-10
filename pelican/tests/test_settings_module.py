@@ -1,8 +1,9 @@
+#
+#  Focus on settings.py/load_source() only
+
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
 
-# TODO: module_name in sys.modules, not always, might be PC_FILENAME_VALID or something
 # TODO: Last-always test to ensure no user modules are left installed and built-in modules are left untouched
-# TODO: determine if pelicanconf should be return to caller if successfully loaded (YES) and not deleted (yes, not deleted)
 
 # This test crapped out in N-processes; mktemp, et. al. cannot be done within setUp()
 # mktemp, et. al. MUST BE performed within each procedure
@@ -11,7 +12,7 @@
 # Cannot put cleanup of sys.modules in setUp()/tearDown() due to scoping, retention of
 # module's name across each test functions, due to parallelism of unit tests.
 
-# TODO Using caplog.clear() impacts ALL STDOUT capture across
+# Using caplog.clear() impacts ALL STDOUT capture across
 # all parallelized PyTest unit tests.
 
 import errno

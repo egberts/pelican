@@ -1,3 +1,10 @@
+#
+#  Focused on settings.py/load_source(), specifically pathlib.Path type
+#
+# Ruff wants '# NOQA: RUF100',
+# PyCharm wants '# : RUF 100';
+# RUFF says PyCharm is a no-go; stay with RUFF, ignore PyCharm orange warnings
+
 import errno
 import locale
 import logging
