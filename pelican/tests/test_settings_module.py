@@ -5,9 +5,17 @@
 
 # TODO: Last-always test to ensure no user modules are left installed and built-in modules are left untouched
 
+# There are three levels of entanglement as determined by `sys.getrefcount(my_module)`:
+#   1 - Easy to remove and reinstall using `importlib.reload`
+#   3 - Some OTHER module depends on this module; a simple `del sys.modules['mymod']`
+#   4+ - Three step required:
+#           >>> del sys.modules["my_module"]
+#           >>> setattr(package, "empty", None)   # if circular dependencies
+#           >>> del my_module
+#
 # This test crapped out in N-processes; mktemp, et. al. cannot be done within setUp()
 # mktemp, et. al. MUST BE performed within each procedure
-# until then, we cannot parallel-test this entire file, only 1-process test
+# until then, we cannot parallel-test this entire file, only 1-process test (DONE)
 
 # Cannot put cleanup of sys.modules in setUp()/tearDown() due to scoping, retention of
 # module's name across each test functions, due to parallelism of unit tests.
