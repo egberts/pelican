@@ -457,8 +457,15 @@ def read_settings(
 
 
 def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
-    """Loads settings from a module, returns a dictionary."""
+    """Clones a dictionary of settings from a module.
 
+    :param module: Attempts to load a module using singular current working directory
+                   (`$CWD`) search method then returns a clone-duplicate of its
+                   settings found in the module.
+                   If no module (`None`) is given, then default module name is used.
+    :type module: ModuleType | None
+    :return: Returns a dictionary of Settings found in that Python module.
+    :rtype: Settings"""
     context = {}
     if module is not None:
         context.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
@@ -466,7 +473,18 @@ def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
 
 
 def get_settings_from_file(path: str, reload: bool) -> Settings:
-    """Loads settings from a file path, returning a dict."""
+    """Loads module from a file then clones dictionary of settings from that module.
+
+    :param path: Attempts to load a module using a file specification (absolute or
+                 relative) then returns a clone-duplicate of its settings found in
+                 the module.  If no module (`None`) is given, then default module
+                 name is used.
+    :param path: A file specification (absolute or relative) that points to the
+                 Python script file containing the keyword/value assignment settings.
+    :param reload:  A bool value to check if module is already pre-loaded
+                    before doing a reload.
+    :return: Returns a dictionary of Settings found in that Python module.
+    :rtype: Settings"""
     name = DEFAULT_MODULE_NAME
     # Keep the module name constant for Pelican configuration settings file
     if reload:
@@ -803,7 +821,11 @@ def configure_settings(settings: Settings, reload: bool = False) -> Settings:
     """Provide optimizations, error checking, and warnings for the given
     settings.
     Also, specify the log messages to be ignored.
-    """
+
+    :param settings: Contains a dictionary of Pelican keyword/keyvalue
+    :type settings: Settings
+    :return: An updated dictionary of Pelican's keywords and its keyvalue.
+    :rtype: Settings"""
     if "PATH" not in settings or not os.path.isdir(settings["PATH"]):
         raise Exception(
             "You need to specify a path containing the content"
