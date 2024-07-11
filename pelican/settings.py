@@ -246,21 +246,28 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
     # of configuration filename.
 
     module_name = ""
+    # if load_source(path=...) is used
     if "name" not in locals():
         # old load_source(path) prototype
         module_name = pathlib.Path(path).stem
 
+    # if load_source(None, =...) is used
     if name is None:
         logger.warning(
             f"Module name is missing; using Python built-in to check "
             f"PYTHONPATH for {absolute_filespec}"
         )
+    # if load_source(value: not str, =...) is used
     elif not isinstance(name, str):
         raise TypeError
+    # if load_source(name="", =...) is used
     elif name == "":
         module_name = pathlib.Path(path).stem
+    # if load_source(value: not str, =...) is used
     elif isinstance(name, str):
         module_name = name
+    else:
+        raise TypeError("load_source(name=...) argument is not a str type")
 
     # One last thing to do before sys.modules check, is to deny any dotted module name
     # This is a Pelican design issue (to support pelicanconf reloadability)
@@ -388,6 +395,24 @@ def read_settings(
     override: Optional[Settings] = None,
     reload: bool = False,
 ) -> Settings:
+    """reads the setting files into a Python configuration settings module
+
+    Returns the final Settings list of keys/values after reading the file
+    and applying an override of settings on top of it.
+
+    :param path: The full filespec path to the Pelican configuration settings file.
+    :type path: str | None
+    :param path: The override settings to be used to overwrite the ones read in
+                 from the Pelican configuration settings file.
+    :type override: Settings | None
+    :param reload: A boolean value to safely reload the Pelican configuration settings
+                   file into a Python module
+    :type reload: bool
+    :return: The Settings list of configurations after extracting the key/value from
+             the path of Pelican configuration settings file and after the override
+             settings has been applied over its read settings.
+    :rtype: Settings
+    """
     settings = override or {}
 
     if path:

@@ -1,11 +1,20 @@
 Notes on pytest v4.0 (customized for Pelican)
 
+## Class naming convention under pytest
+
+Class name shall begin with 'Test' and in camelcase notation. Examples are:
+`TestSettings`, `TestServer`.
+
+(Unit) Test name shall begin with 'test_' and in snake case notation.  Examples
+are:  `test_settings`, `test_settings_config`, `test_settings_module`.
+
 ## Setup and Teardowns, Scoping ##
 
 Cannot do any `assert` of any kind within `setUp()`/`tearDown()`
 and `setup_method()`/`teardown_method()` functions; (well, you can, but
 you'd be subjected to frequent breakage in future pyTest.)
 
+Overview on scoping of test preparation:
 * `setUp()` - on a per-unittest basis
 * `setup_method()` - on a per-class/per-method basis; setup any state tied to the
 execution of the given function. Invoked for every test function in the
@@ -17,9 +26,10 @@ NOT called if a test got skipped/assert-FAILED;
 It is possible for `setup_method`/`teardown_method` pairs to be invoked multiple times per testing process.
 * `tearDown()` - on a per-unittest basis
 
-Cannot put cleanup handler of `sys.modules` inside setUp()/tearDown()
-due to scoping, retention of module's name across each test functions; doing so
-will fail under parallelism of unit tests.
+Cannot put cleanup handler interacting with the `sys.modules` inside the
+`setUp()`/`tearDown()` or its fixture due to Python scoping, retention of
+module's name across each test functions; in doing so will fail under
+parallelism of unit tests.
 
 ## Temporary Directory ##
 
@@ -39,7 +49,7 @@ The `capsys`, `capsysbinary`, `capfd`, and `capfdbinary` fixtures allow access
 to `STDOUT`/`STDERR` output created during test execution.
 
 Using `caplog.clear()` impacts ALL `STDOUT` capture across
-all parallelized pytest unit tests.
+all parallelized pytest unit tests.  Use sparingly (until fixed by Python)
 
 A simple method is:
 ```Python

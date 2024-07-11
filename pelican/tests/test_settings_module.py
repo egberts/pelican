@@ -2,34 +2,18 @@
 #  Focus on settings.py/load_source() only
 
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
-
-
-# There are three levels of entanglement as determined by `sys.getrefcount(my_module)`:
-#   1 - Easy to remove and reinstall using `importlib.reload`
-#   3 - Some OTHER module depends on this module; a simple `del sys.modules['mymod']`
-#   4+ - Three step required:
-#           >>> del sys.modules["my_module"]
-#           >>> setattr(package, "empty", None)   # if circular dependencies
-#           >>> del my_module
-#   5-32 - That is Pelican; Pelican really makes it hard to remove a submodule.
-#          That is the sole reason why we do not put config under "pelican.conf".
-#          To avoid all that "entanglement", we chose "pelicanconf" (or "default_conf")
-#          To reduce this reference count, a major rework on Pelican toward a
-#          singular but NON-CIRCULAR `import` is required.
-#
+# Minimum version: Pytest 4.0, Python 3.8+
 
 import errno
 import inspect
 import locale
 import logging
-import ntpath
 import os
-import posixpath
 import shutil
 import stat
 import sys
 import tempfile
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 import pytest
 from _pytest.logging import LogCaptureHandler, _remove_ansi_escape_sequences  # NOQA
@@ -48,7 +32,6 @@ EXT_PYTHON_DISABLED = ".disabled"
 DIRSPEC_CURRENT: str = os.getcwd()
 DIRSPEC_DATADIR: str = "settings" + os.sep
 DIRSPEC_RELATIVE: str = DIRSPEC_DATADIR  # reuse 'tests/settings/' as scratch area
-
 
 # PC_ = Pelican Configuration or PELICANCONF or pelicanconf
 # FILENAME_: file name without the extension
@@ -108,8 +91,8 @@ log.propagate = True
 def remove_read_permissions(path):
     """Remove read permissions from this path, keeping all other permissions intact.
 
-    Params:
-        path:  The path whose permissions to alter.
+    :param path:  The path whose permissions to alter.
+    :type path: str
     """
     no_user_reading = ~stat.S_IRUSR
     no_group_reading = ~stat.S_IRGRP
@@ -118,21 +101,6 @@ def remove_read_permissions(path):
 
     current_permissions = stat.S_IMODE(os.lstat(path).st_mode)
     os.chmod(path, current_permissions & no_reading)
-
-
-def dot_path(pth):
-    """Corner-case to deal with filespec starting with a period symbol
-
-    eal with dotted notation different for PosixPath and NtPath"""
-    """Return path str that may start with '.' if relative."""
-    if pth.is_absolute():
-        return os.fsdecode(pth)
-    if isinstance(pth, PureWindowsPath):
-        return ntpath.join(".", pth)
-    elif isinstance(pth, PurePosixPath):
-        return posixpath.join(".", pth)
-    else:
-        return os.path.join(".", pth)
 
 
 # We need an existing Python system built-in module for testing load_source.
@@ -157,10 +125,10 @@ class TestSettingsModuleName(unittest.TestCase):
     """load_source() w/ module_name arg"""
 
     # Exercises both the path and module_name arguments"""
-
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
         locale.setlocale(locale.LC_ALL, "C")
+        self.saved_sys_modules = sys.modules
 
         # Something interesting ...:
         # below logic only works with ALL classes within a file
@@ -208,6 +176,11 @@ class TestSettingsModuleName(unittest.TestCase):
             del sys.modules[PC_MODNAME_DOTTED]
             AssertionError(
                 f"One of many unittests did not remove {PC_MODNAME_DOTTED} module."
+            )
+        if self.saved_sys_modules != sys.modules:
+            AssertionError(
+                "sys.modules was not restored to its original glory; "
+                "investigate faulty unit test"
             )
         # TODO delete any straggling temporary directory?
 
@@ -438,7 +411,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 f"File {noaccess_rel_filespec_path} should not " "exist in tempdir"
             )
         noaccess_rel_filespec_path.touch()  # wonder if GitHub preserves no-read bit
-        remove_read_permissions(noaccess_rel_filespec_path)
+        remove_read_permissions(str(noaccess_rel_filespec_path))
         noaccess_rel_filespec_str = str(noaccess_rel_filespec_path)
         # File must exist; but one must check that it is unreadable there
         if os.access(noaccess_rel_filespec_str, os.R_OK):
@@ -664,7 +637,7 @@ class TestSettingsModuleName(unittest.TestCase):
             AssertionError(f"Errant '{noaccess_rel_filespec_path} found; FAILED")
         # wonder if GitHub preserves no-read bit (Update: Nope, gotta roll our own)
         Path(noaccess_rel_filespec_path).touch()
-        remove_read_permissions(noaccess_rel_filespec_path)
+        remove_read_permissions(str(noaccess_rel_filespec_path))
         # do not need to copy REL into ABS but need to ensure no ABS is there
         if os.access(noaccess_rel_filespec_path, os.R_OK):
             # Ouch, to change file perm bits or to absolute fail?  Fail here, instead.
@@ -712,7 +685,7 @@ class TestSettingsModuleName(unittest.TestCase):
                 f"File {noaccess_abs_filespec_path} should not " "exist in tempdir"
             )
         noaccess_abs_filespec_path.touch()  # wonder if GitHub preserves no-read bit
-        remove_read_permissions(noaccess_abs_filespec_path)
+        remove_read_permissions(str(noaccess_abs_filespec_path))
         # do not need to copy REL into ABS but need to ensure no ABS is there
         if os.access(noaccess_abs_filespec_path, os.R_OK):
             # Ouch, to change file perm bits or to absolute fail?
@@ -1088,6 +1061,13 @@ class TestSettingsModuleName(unittest.TestCase):
         # not sure if STDERR capture is needed
         assert module_spec is None
         # TODO load_source() always always assert this SystemExit; add assert here?
+
+
+class TestSettingsGetFromFile(unittest.TestCase):
+    """Exercises get_from_settings_file()"""
+
+    def test_get_from_file(self):
+        assert True
 
 
 if __name__ == "__main__":

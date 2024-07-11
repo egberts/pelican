@@ -1,6 +1,7 @@
 import copy
 import locale
 import os
+import sys
 from os.path import abspath, dirname, join
 
 from pelican.settings import (
@@ -26,9 +27,15 @@ class TestSettingsConfiguration(unittest.TestCase):
         self.PATH = abspath(dirname(__file__))
         default_conf = join(self.PATH, "default_conf.py")
         self.settings = read_settings(default_conf, reload=True)
+        self.original_sys_modules = sys.modules
 
     def tearDown(self):
         locale.setlocale(locale.LC_ALL, self.old_locale)
+        self.assertEqual(
+            self.original_sys_modules,
+            sys.modules,
+            "One of the unit test did not clean up sys.modules " "properly.",
+        )
 
     #  NOTE: testSetup() is done once for all unit tests within the same class.
     #  NOTE: Probably want to use test_module(module) or xtest_()
@@ -64,9 +71,20 @@ class TestSettingsConfiguration(unittest.TestCase):
         # affect past or future instances.
         self.PATH = abspath(dirname(__file__))
         default_conf = join(self.PATH, "default_conf.py")
-        settings = read_settings(default_conf)
-        settings["SITEURL"] = "new-value"
+        # settings['SITEURL'] should be blank
+
+        # Trap any exception error
+        try:
+            # why did setUp() call read_settings firstly?  So, we reload here
+            settings = read_settings(default_conf, reload=True)
+            settings["SITEURL"] = "new-value"
+        except any:
+            raise any from None
+
+        # clobber settings['SITEURL']
         new_settings = read_settings(default_conf, reload=True)
+        # see if pulling up a new set of original settings (into a different variable,
+        # via 'new_settings' does not clobbers the 'settings' variable
         self.assertNotEqual(new_settings["SITEURL"], settings["SITEURL"])
 
     def test_defaults_not_overwritten(self):
