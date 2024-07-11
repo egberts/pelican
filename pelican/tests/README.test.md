@@ -1,29 +1,58 @@
 Notes on pytest v4.0 (customized for Pelican)
 
+## Simple Test Case
+a test as being broken down into four steps:
+
+1. Arrange
+2. Act
+3. Assert
+4. Cleanup
+
+
+## Scope Ordering
+The ordering of test cases are in nested order starting with biggest
+inclusion scope to smallest:
+
+* Order (`order`)
+* Session (`sess`)
+* Package (`pack`)
+* Module (`mod`)
+* Class (`cls`)
+* Function (`func`)
+* Test order (`test_order`)
+
 ## Class naming convention under pytest
 
+Filename of a unittest case shall begins with `test_` or ends with `_test`.
+
 Class name shall begin with 'Test' and in camelcase notation. Examples are:
-`TestSettings`, `TestServer`.
+`TestSettings`, `TestServer`, as those are required when using
+`unittest.TestCase` as a class feature.
 
 (Unit) Test name shall begin with 'test_' and in snake case notation.  Examples
 are:  `test_settings`, `test_settings_config`, `test_settings_module`.
 
 ## Setup and Teardowns, Scoping ##
 
-Cannot do any `assert` of any kind within `setUp()`/`tearDown()`
-and `setup_method()`/`teardown_method()` functions; (well, you can, but
+Cannot do any `assert` of any kind within unittest's `setUp()`/`tearDown()`
+and pytest's `setup_method()`/`teardown_method()` functions; (well, you can, but
 you'd be subjected to frequent breakage in future pyTest.)
 
 Overview on scoping of test preparation:
 * `setUp()` - on a per-unittest basis
+* `setUpClass()` - per-class/per-method basis, unittest-only
 * `setup_method()` - on a per-class/per-method basis; setup any state tied to the
 execution of the given function. Invoked for every test function in the
 module; It is possible for `setup_method`/`teardown_method` pairs to be
-invoked multiple times per testing process.
+invoked multiple times per testing process.  Used only with pytest.
+* `setUpModule()` - per-file basis
+* `tearDownModule()` per-file basis
 * `teardown_method()` - on a per-class/per-method basis; teardown any
 state that was previously setup with a setup_function call.;
 NOT called if a test got skipped/assert-FAILED;
-It is possible for `setup_method`/`teardown_method` pairs to be invoked multiple times per testing process.
+It is possible for `setup_method`/`teardown_method` pairs to be invoked
+multiple times per testing process.  Used only with pytest.
+* `tearDownClass()` - per-class/per-method basis, unittest-only.
 * `tearDown()` - on a per-unittest basis
 
 Cannot put cleanup handler interacting with the `sys.modules` inside the
@@ -122,3 +151,5 @@ Tests will crap out in N-processes if using `mktemp`, et al.; within `setUp()`.
 # References
 * [tmp_path](https://docs.pytest.org/en/latest/how-to/tmp_path.html)
 * [Capture STDOUT/STDERR](https://docs.pytest.org/en/latest/how-to/capture-stdout-stderr.html)
+* [Scope Ordering](https://docs.pytest.org/en/latest/reference/fixtures.html#fixtures)
+* [List of alternative test tools to `pytest`/`unittest`](https://wiki.python.org/moin/PythonTestingToolsTaxonomy)
