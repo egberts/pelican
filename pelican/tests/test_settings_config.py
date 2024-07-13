@@ -166,7 +166,7 @@ class TestSettingsConfig:
         """Create and cleanup disposable temporary directory
 
         This fixture executes every time a test case function references this
-        via `scope=function`.
+        via its own `scope=function`.
 
         This is the part that does the old unittest's both `setUp()` and `tearDown()`
         but with providing a disposable temporary directory here.
@@ -184,13 +184,14 @@ class TestSettingsConfig:
         # this is a secured issue, like avoiding a modified 'rm -rf /#oops'
         # this is by a new value pointer (since Python does not have read-only variable)
         #
-        # Of course, the id(obj) will remain the same after deepcopy if code does not
-        # make variable mutable.  A nice insurance policy here.
+        # Of course, the id(obj) will remain the identical after a deepcopy() if code
+        # does not make its variable mutable.  A nice insurance policy here.
         original_tmp_dir_path = copy.deepcopy(copy.deepcopy(temporary_dir_path))
         # `yield` statement pauses here within this code body and now start
-        # executing the code of one of many functions that is referencing this fixture.
+        # executing the code of the function that is referencing this fixture here.
         yield temporary_dir_path
-        # Now execute the caller's code to completion before continuing here.
+        # Now execute the caller's code to 100% completion before resuming here.
+
         # There is a danger of __pycache__ being overlooked here only if this fails
         # while not a showstopper nor alteration of a test result, this __pycache__
         # would just merely clutter the directory.
@@ -212,8 +213,8 @@ class TestSettingsConfig:
     # (`yield` is in fixture_func_create_tmp_dir_abs_path).              #
     ######################################################################
     #
-    # Again, in the test_cs_blanks() argument list, ordering of these fixtures do not
-    # matter (it's like Python import statements).  But it can get and provide
+    # Again, in the test_cs_abs_tmpfile() argument list, ordering of these fixtures
+    # do not matter (it's like Python import statements).  But it can get and provide
     # object values from those fixtures (like temporary directory path here).
     #
     # Ordering of all fixtures that got references by any body of statement codes gets
