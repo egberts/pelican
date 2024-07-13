@@ -28,8 +28,12 @@ TMP_DIRNAME_SUFFIX = "pelican"
 # is that the ordering of its argument DOES NOT matter: this is a block programming
 # thing, not like most procedural programming languages.
 #
-
-
+# To see collection/ordering of fixtures, execute:
+#
+#    pytest -n0 --setup-plan \
+#        test_settings_config.py::TestSettingsConfig::test_cs_abs_tmpfile
+#
+#
 # Using class in pytest is a way of aggregating similar test cases together.
 class TestSettingsConfig:
     """Exercise the configure_settings()/settings.py"""
@@ -166,8 +170,6 @@ class TestSettingsConfig:
 
         This is the part that does the old unittest's both `setUp()` and `tearDown()`
         but with providing a disposable temporary directory here.
-        :param fixture_cls_get_settings_dir_abs_path: Get the `settings` directory path
-        :type fixture_cls_get_settings_dir_abs_path: object
         :param fixture_func_template_temp_dir_abs_path: a test block to create a template temporary dir
         :type fixture_func_template_temp_dir_abs_path: object
         :return: the directory path specification of a newly created temporary directory
@@ -187,7 +189,7 @@ class TestSettingsConfig:
         original_tmp_dir_path = copy.deepcopy(copy.deepcopy(temporary_dir_path))
         # `yield` statement pauses here within this code body and now start
         # executing the code of one of many functions that is referencing this fixture.
-        yield original_tmp_dir_path
+        yield temporary_dir_path
         # Now execute the caller's code to completion before continuing here.
         # There is a danger of __pycache__ being overlooked here only if this fails
         # while not a showstopper nor alteration of a test result, this __pycache__
@@ -240,7 +242,7 @@ class TestSettingsConfig:
         my_tmp_abs_path = fixture_func_create_tmp_dir_abs_path
         print(f"test_cs_abs_tmpfile: my_tmp_abs_path: {my_tmp_abs_path}")  # NOQA
         assert True
-        #   fixture_func_create_tmp_dir_abs_path: (after `yield`):
+        #   fixture_func_create_tmp_dir_abs_path: (after `yield`): completed
 
     def test_cs_relative_tmpfile(
         self,
@@ -270,5 +272,9 @@ class TestSettingsConfig:
 
 if __name__ == "__main__":
     # if executing this file alone, it tests this file alone.
-    # Can execute from any curernt working directory
+    # Can execute from any current working directory
     pytest.main([__file__])
+
+    # more, complex variants of pytest
+    # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
+    # pytest.main([__file__, "-n0"])  # single-process, single-thread
