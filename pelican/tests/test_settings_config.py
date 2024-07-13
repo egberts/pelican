@@ -41,9 +41,10 @@ class TestSettingsConfig:
     # list for a class function (or `()` for a classless function).      #
     ######################################################################
     #
-    # Any fixture that has a `scope=class` argument stays within this class.
-    # Any fixture that has a `scope=function` argument stays within this
-    # class/module.
+    # Any fixture that has a `scope=module` argument avails to this entire file.
+    # Any fixture that has a `scope=class` argument stays within this class/module.
+    # Any fixture that has a `scope=function` argument under a class stays within this
+    # class/module, or before any class avails to the entire file.
     #
     # This fixture is placed firstly here (as a practice, not a rule).
     # This fixture name is optionally suffixed as `fixture_module_`, et al. for
@@ -64,7 +65,7 @@ class TestSettingsConfig:
         :return: Returns the Path of the tests directory
         :rtype: pathlib.Path"""
         abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
-        # Fixture can return an object value (int, dict, list, combo of types)
+        # Fixture can return ANY type of object (int, dict, list, combo of types)
         #
         # Return statement, if returning an object, uses the object's implicit type as
         # dictated by its last assignment within this code body and completely ignores
@@ -155,8 +156,8 @@ class TestSettingsConfig:
     def fixture_func_create_tmp_dir_abs_path(
         self,
         fixture_func_template_temp_dir_abs_path,
-        # redundant to specify other dependencies of subfixtures here
-        # fixture_cls_get_settings_dir_abs_path
+        # redundant to specify other dependencies of sub-fixtures here such as:
+        #   fixture_cls_get_settings_dir_abs_path
     ) -> Path:
         """Create and cleanup disposable temporary directory
 
@@ -215,11 +216,11 @@ class TestSettingsConfig:
     #
     # Ordering of all fixtures that got references by any body of statement codes gets
     # 100% evaluated before anything gets its start of code execution.
-    def test_cs_blanks(
+    def test_cs_abs_tmpfile(
         self,
-        fixture_func_template_temp_dir_abs_path,
-        fixture_module_get_tests_dir_abs_path,
-        fixture_cls_get_settings_dir_abs_path,
+        # fixture_func_template_temp_dir_abs_path,
+        # fixture_module_get_tests_dir_abs_path,
+        # fixture_cls_get_settings_dir_abs_path,
         fixture_func_create_tmp_dir_abs_path,
     ):
         """test a premise
@@ -228,25 +229,25 @@ class TestSettingsConfig:
 
         :param self: this TestSettingsConfig class instantiation
         :type self: TestSettingsConfig class
-        :param fixture_func_create_tmp_dir_abs_path: a fixture that provides a temporary directory
-                        for testing.
+        :param fixture_func_create_tmp_dir_abs_path: a fixture that provides a
+                                                     temporary directory for testing.
         :type fixture_func_create_tmp_dir_abs_path: object"""
         # Precomputed order of other fixtures' execution is:
         #   fixture_module_get_tests_dir_abs_path: completed
         #   fixture_cls_get_settings_dir_abs_path: completed
         #   fixture_func_template_temp_dir_abs_path: completed
         #   fixture_func_create_tmp_dir_abs_path: (before `yield`)
-        my_tmp_path = fixture_func_create_tmp_dir_abs_path
-        print(f"test_cs_blank: my_tmp_path: {my_tmp_path}")  # NOQA
+        my_tmp_abs_path = fixture_func_create_tmp_dir_abs_path
+        print(f"test_cs_abs_tmpfile: my_tmp_abs_path: {my_tmp_abs_path}")  # NOQA
         assert True
         #   fixture_func_create_tmp_dir_abs_path: (after `yield`):
 
-    def test_cs_blank_second(
+    def test_cs_relative_tmpfile(
         self,
-        fixture_func_template_temp_dir_abs_path,
-        fixture_cls_get_settings_dir_abs_path,
-        fixture_func_create_tmp_dir_abs_path,
-        fixture_module_get_tests_dir_abs_path,
+        # fixture_func_template_temp_dir_abs_path,
+        # fixture_cls_get_settings_dir_abs_path,
+        fixture_func_create_tmp_dir_rel_path,
+        # fixture_module_get_tests_dir_abs_path,
     ):
         """test a premise
 
@@ -254,11 +255,20 @@ class TestSettingsConfig:
 
         :param self: this TestSettingsConfig class instantiation
         :type self: TestSettingsConfig class
-        :param fixture_func_create_tmp_dir_abs_path: a fixture that provides a temporary directory
+        :param fixture_func_create_tmp_dir_rel_path: a fixture that provides a temporary directory
                         for testing.
-        :type fixture_func_create_tmp_dir_abs_path: object"""
+        :type fixture_func_create_tmp_dir_rel_path: object"""
+        # Precomputed order of other fixtures' execution is:
+        #   fixture_module_get_tests_dir_rel_path: completed
+        #   fixture_cls_get_settings_dir_rel_path: completed
+        #   fixture_func_template_temp_dir_rel_path: completed
+        #   fixture_func_create_tmp_dir_rel_path: (before `yield`)
+        my_tmp_relative_path = fixture_func_create_tmp_dir_rel_path
+        print(f"test_cs_relative_tmpfile: my_tmp_abs_path: {my_tmp_relative_path}")  # NOQA
         assert True
 
 
 if __name__ == "__main__":
-    pytest.main()
+    # if executing this file alone, it tests this file alone.
+    # Can execute from any curernt working directory
+    pytest.main([__file__])
