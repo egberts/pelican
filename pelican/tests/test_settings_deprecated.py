@@ -81,7 +81,7 @@ class SettingsDeprecated(unittest.TestCase):
         # clobber settings['SITEURL']
         new_settings = read_settings(default_conf, reload=True)
         # see if pulling up a new set of original settings (into a different variable,
-        # via 'new_settings' does not clobbers the 'settings' variable
+        # via 'new_settings' does not clobber the 'settings' variable
         self.assertNotEqual(new_settings["SITEURL"], settings["SITEURL"])
 
     def test_defaults_not_overwritten(self):

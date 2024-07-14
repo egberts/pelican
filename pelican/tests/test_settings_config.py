@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-DIRDATA_DIRSPEC: Path = Path("settings" + os.sep)
+SETTINGS_DATA_DIRSPEC: Path = Path("settings" + os.sep)
 TMP_DIRNAME_SUFFIX = "pelican"
 
 
@@ -17,7 +17,7 @@ TMP_DIRNAME_SUFFIX = "pelican"
 #   * Function (Set up and tear down once for each test function)
 #   * Class (Set up and tear down once for each test class)
 #   * Module (Set up and tear down once for each test module/file)
-#   * Session (Set up and tear down once for each test session i.e comprising
+#   * Session (Set up and tear down once for each test session i.e. comprising
 #              one or more test files)
 #
 # The order of `def` fixtures/functions declarations within a source file
@@ -31,7 +31,7 @@ TMP_DIRNAME_SUFFIX = "pelican"
 # To see collection/ordering of fixtures, execute:
 #
 #    pytest -n0 --setup-plan \
-#        test_settings_config.py::TestSettingsConfig::test_cs_abs_tmpfile
+#        test_settings_config.py::TestSettingsConfig::test_cs_abs_tmp_file
 #
 #
 # Using class in pytest is a way of aggregating similar test cases together.
@@ -162,7 +162,7 @@ class TestSettingsConfig:
         fixture_func_template_temp_dir_abs_path,
         # redundant to specify other dependencies of sub-fixtures here such as:
         #   fixture_cls_get_settings_dir_abs_path
-    ) -> Path:
+    ):
         """Create and cleanup disposable temporary directory
 
         This fixture executes every time a test case function references this
@@ -170,7 +170,8 @@ class TestSettingsConfig:
 
         This is the part that does the old unittest's both `setUp()` and `tearDown()`
         but with providing a disposable temporary directory here.
-        :param fixture_func_template_temp_dir_abs_path: a test block to create a template temporary dir
+        :param fixture_func_template_temp_dir_abs_path: a test block to create a i
+               template temporary dir
         :type fixture_func_template_temp_dir_abs_path: object
         :return: the directory path specification of a newly created temporary directory
         :rtype: pathlib.Path
@@ -213,13 +214,13 @@ class TestSettingsConfig:
     # (`yield` is in fixture_func_create_tmp_dir_abs_path).              #
     ######################################################################
     #
-    # Again, in the test_cs_abs_tmpfile() argument list, ordering of these fixtures
+    # Again, in the test_cs_abs_tmp_file() argument list, ordering of these fixtures
     # do not matter (it's like Python import statements).  But it can get and provide
     # object values from those fixtures (like temporary directory path here).
     #
     # Ordering of all fixtures that got references by any body of statement codes gets
     # 100% evaluated before anything gets its start of code execution.
-    def test_cs_abs_tmpfile(
+    def test_cs_abs_tmp_file(
         self,
         # fixture_func_template_temp_dir_abs_path,
         # fixture_module_get_tests_dir_abs_path,
@@ -245,7 +246,7 @@ class TestSettingsConfig:
         assert True
         #   fixture_func_create_tmp_dir_abs_path: (after `yield`): completed
 
-    def test_cs_relative_tmpfile(
+    def test_cs_relative_tmp_file(
         self,
         # fixture_func_template_temp_dir_abs_path,
         # fixture_cls_get_settings_dir_abs_path,
@@ -258,8 +259,8 @@ class TestSettingsConfig:
 
         :param self: this TestSettingsConfig class instantiation
         :type self: TestSettingsConfig class
-        :param fixture_func_create_tmp_dir_rel_path: a fixture that provides a temporary directory
-                        for testing.
+        :param fixture_func_create_tmp_dir_rel_path: a fixture that provides a
+                                                     temporary directory for testing.
         :type fixture_func_create_tmp_dir_rel_path: object"""
         # Precomputed order of other fixtures' execution is:
         #   fixture_module_get_tests_dir_rel_path: completed
@@ -276,6 +277,6 @@ if __name__ == "__main__":
     # Can execute from any current working directory
     pytest.main([__file__])
 
-    # more, complex variants of pytest
+    # more, complex variants of pytest.
     # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
     # pytest.main([__file__, "-n0"])  # single-process, single-thread

@@ -1,9 +1,9 @@
 #
 #  Focused on settings.py/load_source(), specifically pathlib.Path type
 #
-# Ruff wants '# NOQA: RUF100',
-# PyCharm wants '# : RUF 100';
-# RUFF says PyCharm is a no-go; stay with RUFF, ignore PyCharm orange warnings
+# Ruff wants '# NOQA: RUF100'
+# PyCharm wants '# : RUF100'
+# RUFF says PyCharm is a no-go; stay with RUFF, ignore PyCharm's NOQA orange warnings
 
 import copy
 import locale
@@ -42,10 +42,10 @@ PC_FULLNAME_SYNTAX_ERROR: str = PC_FILENAME_SYNTAX_ERROR + EXT_PYTHON
 PC_FULLNAME_SYNTAX2_ERROR: str = PC_FILENAME_SYNTAX2_ERROR + EXT_PYTHON
 
 # Unit Test Case - Syntax Error attributes
-UT_SYNTAXERROR_LINENO = 5
-UT_SYNTAXERROR_OFFSET = 1
-UT_SYNTAXERROR2_LINENO = 13
-UT_SYNTAXERROR2_OFFSET = 5
+UT_SYNTAX_ERROR_LINENO = 5
+UT_SYNTAX_ERROR_OFFSET = 1
+UT_SYNTAX_ERROR2_LINENO = 13
+UT_SYNTAX_ERROR2_OFFSET = 5
 
 logging.basicConfig(level=0)
 log = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ log.propagate = True
 #   * Function (Set up and tear down once for each test function)
 #   * Class (Set up and tear down once for each test class)
 #   * Module (Set up and tear down once for each test module/file)
-#   * Session (Set up and tear down once for each test session i.e comprising
+#   * Session (Set up and tear down once for each test session i.e. comprising
 #              one or more test files)
 #
 # The order of `def` fixtures/functions declarations within a source file
@@ -258,14 +258,12 @@ class TestSettingsLoadSourcePath:
                 self._caplog.clear()
 
                 load_source(path=str(file_under_unit_test_filespec), name="")  # NOQA: RUF100
-                # ignore return value due to sys.exit()
+                # ignore return value due to SyntaxError exception
+
             assert "unexpected indent" in self._caplog.text
-            # assert sample.type == SystemExit
             assert sample.type == SyntaxError
-            assert sample.value.args[1]["lineno"] == UT_SYNTAXERROR_LINENO
-            assert sample.value.args[1]["offset"] == UT_SYNTAXERROR_OFFSET
-            # assert sample.value.code == errno.ENOEXEC
-            # assert sample.traceback[1].lineno == 360
+            assert sample.value.args[1]["lineno"] == UT_SYNTAX_ERROR_LINENO
+            assert sample.value.args[1]["offset"] == UT_SYNTAX_ERROR_OFFSET
 
         Path(file_under_unit_test_filespec).unlink(missing_ok=True)
 
@@ -289,14 +287,12 @@ class TestSettingsLoadSourcePath:
                 self._caplog.clear()
 
                 load_source(path=str(file_under_unit_test_filespec), name="")  # NOQA: RUF100
-                # ignore return value due to sys.exit()
+                # ignore return value due to SyntaxError exception
+
             assert "invalid syntax" in self._caplog.text
-            # assert sample.type == SystemExit
             assert sample.type == SyntaxError
-            assert sample.value.args[1]["lineno"] == UT_SYNTAXERROR2_LINENO
-            assert sample.value.args[1]["offset"] == UT_SYNTAXERROR2_OFFSET
-            # assert sample.value.code == errno.ENOEXEC
-            # assert sample.traceback[1].lineno == 360
+            assert sample.value.args[1]["lineno"] == UT_SYNTAX_ERROR2_LINENO
+            assert sample.value.args[1]["offset"] == UT_SYNTAX_ERROR2_OFFSET
 
         Path(file_under_unit_test_filespec).unlink(missing_ok=True)
 
@@ -306,6 +302,6 @@ if __name__ == "__main__":
     # Can execute from any current working directory
     pytest.main([__file__])
 
-    # more, complex variants of pytest
+    # more, complex variants of pytest.
     # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
     # pytest.main([__file__, "-n0"])  # single-process, single-thread

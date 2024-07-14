@@ -186,7 +186,7 @@ class TestSettingsModuleName(unittest.TestCase):
 
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog):
-        """add support for an assert based on subpattern in caplog.text output"""
+        """add support for an assert based on subpattern in `caplog.text` output"""
         self._caplog = caplog
 
     # Blank arguments test series, by path argument, str type
@@ -771,7 +771,7 @@ class TestSettingsModuleName(unittest.TestCase):
             )
 
         # copy "pseudo-script" file into 'settings/pelicanXXXXX/(here)'
-        # An essential avoidance of ruff/black's own syntax-error asserts)
+        # An essential avoidance of ruff/black's own syntax-error asserts
         blob: str = str(BLOB_FILESPEC_SYNTAX_ERROR)
         # Set up temporary relative "settings/pelicanXXXXXX/(here)"
         tmp_rel_dirspec_path: Path = Path(
