@@ -353,12 +353,26 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
         return module_type
     except SyntaxError as e:
         full_filespec = conf_filespec.resolve(strict=True)
+        # Show where in the pelicanconf.py the offending syntax error is at via {e}.
         logger.error(
             f"{e}.\nHINT: "
             f"Try executing `python {full_filespec}` "
             f"for better syntax troubleshooting."
         )
-        sys.exit(errno.ENOEXEC)
+        # Trying something new, reraise the exception up
+        raise SyntaxError(
+            f"Error invalid syntax at line number {e.end_lineno}"
+            f" column offset {e.end_offset}",
+            {
+                "filename": full_filespec,
+                "lineno": int(e.lineno),
+                "offset": int(e.offset),
+                "text": e.text,
+                "end_lineno": int(e.end_lineno),
+                "end_offset": int(e.end_offset),
+            },
+        ) from e
+        # sys.exit(errno.ENOEXEC)
     except Any as e:
         logger.critical(
             f"'Python system module loader for {resolved_absolute_filespec}'"
@@ -481,7 +495,7 @@ def get_settings_from_file(path: str, reload: bool) -> Settings:
                  name is used.
     :param path: A file specification (absolute or relative) that points to the
                  Python script file containing the keyword/value assignment settings.
-    :param reload:  A bool value to check if module is already pre-loaded
+    :param reload:  A bool value to check if module is already preloaded
                     before doing a reload.
     :return: Returns a dictionary of Settings found in that Python module.
     :rtype: Settings"""
@@ -817,13 +831,15 @@ def handle_deprecated_settings(settings: Settings) -> Settings:
     return settings
 
 
-def configure_settings(settings: Settings, reload: bool = False) -> Settings:
+def configure_settings(settings: Settings, reload: None | bool = False) -> Settings:
     """Provide optimizations, error checking, and warnings for the given
     settings.
     Also, specify the log messages to be ignored.
 
     :param settings: Contains a dictionary of Pelican keyword/keyvalue
     :type settings: Settings
+    :param reload: A flag to reload the same module but maybe with a different file
+    :type reload: bool
     :return: An updated dictionary of Pelican's keywords and its keyvalue.
     :rtype: Settings"""
     if "PATH" not in settings or not os.path.isdir(settings["PATH"]):
