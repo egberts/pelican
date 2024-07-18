@@ -1,3 +1,5 @@
+"""All of Pelican configuration settings come to life here"""
+
 import copy
 import locale
 import os
@@ -10,6 +12,7 @@ from pelican.settings import (
     _printf_s_to_format_field,
     configure_settings,
     handle_deprecated_settings,
+    load_source,
     read_settings,
 )
 from pelican.tests.support import unittest
@@ -19,6 +22,12 @@ class TestSettingsConfiguration(unittest.TestCase):
     """Provided a file, it should read it, replace the default values,
     append new values to the settings (if any), and apply basic settings
     optimizations.
+
+    :param unittest.TestCase:
+    :type unittest.TestCase: type
+    :param return: 0 if successful
+    :rtype: type
+    :raise ExceptionType: description of exception raised
     """
 
     def setUp(self):
@@ -44,6 +53,46 @@ class TestSettingsConfiguration(unittest.TestCase):
     #    def test_overwrite_existing_settings(self):
     #        self.assertEqual(self.settings.get("SITENAME"), "Alexis' log")
     #        self.assertEqual(self.settings.get("SITEURL"), "http://blog.notmyidea.org")
+    def test_load_source_invalid_abs_path1_fail(self):
+        """load_source(), invalid absolute path, no such file, failing mode"""
+        name = "pelicanconf-does-not-exist"
+        path = "/no-such-directory"  # a directory, not the expected file
+        mod = load_source(name, path)
+        self.assertEqual(
+            mod, None, "absolute '/no-such-directory' directory path is not found."
+        )
+
+    def test_load_source_invalid_abs_path2_fail(self):
+        """load_source(), invalid absolute path, directory, failing mode"""
+        name = "pelicanconf-does-not-exist"
+        path = "/tmp"  # a directory, not the expected file
+        mod = load_source(name, path)
+        self.assertEqual(
+            mod, None, "Missing absolute '/tmp/pelican-does-not-exist.py' file"
+        )
+
+    def test_load_source_invalid_abs_path3_fail(self):
+        """load_source(), invalid absolute unresolved path, directory, failing mode"""
+        name = "pelicanconf-does-not-exist"
+        path = "/../tmp"  # a directory, not the expected file
+        mod = load_source(name, path)
+        self.assertEqual(mod, None, "Missing relative pelicanconf.py")
+
+    def test_load_source_missing_relative_fail(self):
+        name = "pelicanconf-does-not-exist"  # module_name
+        path = "."  # location of module Python file
+        mod = load_source(name, path)
+        self.assertEqual(mod, None, "Missing relative pelicanconf.py")
+
+    def test_load_source_missing_absolute_fail(self):
+        name = "pelicanconf-does-not-exist"
+        path = "/tmp/pelicanconf-does-not-exist.py"
+        mod = load_source(name, path)
+        self.assertEqual(mod, None)
+
+    def test_overwrite_existing_settings(self):
+        self.assertEqual(self.settings.get("SITENAME"), "Alexis' log")
+        self.assertEqual(self.settings.get("SITEURL"), "http://blog.notmyidea.org")
 
     def test_keep_default_settings(self):
         # Keep default settings if not defined.
