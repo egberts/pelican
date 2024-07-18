@@ -372,7 +372,6 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
                 "end_offset": int(e.end_offset),
             },
         ) from e
-        # sys.exit(errno.ENOEXEC)
     except Any as e:
         logger.critical(
             f"'Python system module loader for {resolved_absolute_filespec}'"
