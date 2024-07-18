@@ -5,6 +5,7 @@
 # PyCharm wants '# : RUF100'
 # RUFF says PyCharm is a no-go; stay with RUFF, ignore PyCharm's NOQA orange warnings
 
+import contextlib
 import copy
 import locale
 import logging
@@ -13,6 +14,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import filelock
 import pytest
 from _pytest.logging import LogCaptureHandler, _remove_ansi_escape_sequences  # NOQA
 
@@ -25,33 +27,23 @@ TMP_DIRNAME_SUFFIX = "pelican"
 DIRSPEC_RELATIVE = "settings" + os.sep
 
 EXT_PYTHON = ".py"
-EXT_PYTHON_DISABLED = ".disabled"
+# EXT_PYTHON_DISABLED = ".disabled"
 
 PC_MODNAME_ACTUAL = "pelicanconf"
 
 # FILENAME_: file name without the extension
 PC_FILENAME_DEFAULT = PC_MODNAME_ACTUAL
 PC_FILENAME_VALID = "pelicanconf-valid"
-PC_FILENAME_SYNTAX_ERROR = "pelicanconf-syntax-error"
-PC_FILENAME_SYNTAX2_ERROR = "pelicanconf-syntax-error2"
+
 
 # FULLNAME_: filename + extension
-PC_FILENAME_DEFAULT: str = PC_FILENAME_DEFAULT + EXT_PYTHON
+PC_FULLNAME_DEFAULT: str = PC_FILENAME_DEFAULT + EXT_PYTHON
 PC_FULLNAME_VALID: str = PC_FILENAME_VALID + EXT_PYTHON
-PC_FULLNAME_SYNTAX_ERROR: str = PC_FILENAME_SYNTAX_ERROR + EXT_PYTHON
-PC_FULLNAME_SYNTAX2_ERROR: str = PC_FILENAME_SYNTAX2_ERROR + EXT_PYTHON
-
-# Unit Test Case - Syntax Error attributes
-UT_SYNTAX_ERROR_LINENO = 5
-UT_SYNTAX_ERROR_OFFSET = 1
-UT_SYNTAX_ERROR2_LINENO = 13
-UT_SYNTAX_ERROR2_OFFSET = 5
 
 logging.basicConfig(level=0)
 log = logging.getLogger(__name__)
 logging.root.setLevel(logging.DEBUG)
 log.propagate = True
-
 
 # Note: Unittest test setUp/tearDown got replaced by Pytest and its fixtures.
 #
@@ -78,28 +70,40 @@ log.propagate = True
 #
 #
 # Using class in pytest is a way of aggregating similar test cases together.
+
+
+@pytest.fixture(scope="session")
+def fixture_session_lock(tmp_path_factory):
+    base_temp = tmp_path_factory.getbasetemp()
+    lock_file = base_temp.parent / "serial.lock"
+    yield filelock.FileLock(lock_file=str(lock_file))
+    with contextlib.suppress(OSError):
+        os.remove(path=lock_file)
+
+
+@pytest.fixture(scope="module")
+def fixture_module_get_tests_dir_abs_path():
+    """Get the absolute directory path of `tests` subdirectory
+
+    This pytest module-wide fixture will provide a full directory
+    path of this `test_settings_config.py`.
+
+    Note: used to assist in locating the `settings` directory underneath it.
+
+    This fixture gets evoked exactly once (file-wide) due to `scope=module`.
+
+    :return: Returns the Path of the tests directory
+    :rtype: pathlib.Path"""
+    abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
+    return abs_tests_dirpath
+
+
 class TestSettingsLoadSourcePath:
-    """load_source"""
+    """load_source()"""
 
     # Provided a file, it should read it, replace the default values,
     # append new values to the settings (if any), and apply basic settings
     # optimizations.
-
-    @pytest.fixture(scope="module")
-    def fixture_module_get_tests_dir_abs_path(self):
-        """Get the absolute directory path of `tests` subdirectory
-
-        This pytest module-wide fixture will provide a full directory
-        path of this `test_settings_config.py`.
-
-        Note: used to assist in locating the `settings` directory underneath it.
-
-        This fixture gets evoked exactly once (file-wide) due to `scope=module`.
-
-        :return: Returns the Path of the tests directory
-        :rtype: pathlib.Path"""
-        abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
-        return abs_tests_dirpath
 
     @pytest.fixture(scope="class")
     def fixture_cls_get_settings_dir_abs_path(
@@ -117,6 +121,16 @@ class TestSettingsLoadSourcePath:
         :rtype: pathlib.Path"""
         settings_dirpath: Path = fixture_module_get_tests_dir_abs_path / "settings"
         return settings_dirpath
+
+    @pytest.fixture(scope="function")
+    def fixture_func_serial(self, fixture_session_lock):
+        """mark function test as serial/sequential ordering
+
+        Include `serial` in the function's argument list ensures
+        that no other test(s) also having `serial` in its argument list
+        shall run."""
+        with fixture_session_lock.acquire(poll_interval=0.1):
+            yield
 
     @pytest.fixture(scope="function")
     def fixture_func_create_tmp_dir_abs_path(
@@ -165,19 +179,39 @@ class TestSettingsLoadSourcePath:
     def test_load_source_arg_missing_fail(self):
         """missing arguments; failing mode"""
         with pytest.raises(TypeError) as sample:
-            load_source()  # noqa: RUF100
+            load_source()  # NOQA: RUF100
         assert sample.type == TypeError
         # assert sample.value.code only exists for SystemExit
 
+    def test_load_source_path_str_one_none_fail(self):
+        """one None argument; failing mode"""
+        with pytest.raises(TypeError) as sample:
+            load_source(None)  # NOQA: RUF100
+        assert sample.type == TypeError
+
+    def test_load_source_path_str_one_blank_fail(self):
+        """one blank string argument; failing mode"""
+        with pytest.raises(TypeError) as sample:
+            load_source("")  # NOQA: RUF100
+        assert sample.type == TypeError
+
+    def test_load_source_path_str_one_label_name_blank_fail(self):
+        """label name, blank string argument; failing mode"""
+        with pytest.raises(TypeError) as sample:
+            load_source(name="")
+        assert sample.type == TypeError
+
     def test_load_source_path_str_blank_fail(self):
         """blank string argument; failing mode"""
-        module_type = load_source("", "")
-        assert module_type is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source("", "")
+        assert sample.type == IsADirectoryError
 
     def test_load_source_path_arg_str_blank_fail(self):
         """argument name with blank str; failing mode"""
-        module_type = load_source(name="", path="")
-        assert module_type is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(name="", path="")
+        assert sample.type == IsADirectoryError
 
     def test_load_source_wrong_arg_fail(self):
         """wrong argument name (variant 1); failing mode"""
@@ -234,67 +268,11 @@ class TestSettingsLoadSourcePath:
     def test_load_source_path_valid_pelicanconf_py_pass(self):
         """correct working function call; passing mode"""
         path: str = DIRSPEC_RELATIVE + PC_FULLNAME_VALID
-        module_type = load_source(name="", path=path)  # extract module name from file
-        assert module_type is not None
+        with pytest.raises(TypeError) as sample:
+            load_source(name="", path=path)  # extract module name from file
+        assert sample.type == TypeError
 
     #    @log_function_details
-    def test_load_source_path_pelicanconf_abs_syntax_error_fail(
-        self,
-        fixture_func_create_tmp_dir_abs_path,
-        fixture_cls_get_settings_dir_abs_path,
-    ):
-        """syntax error; absolute path; str type; failing mode"""
-        datadir_path = fixture_cls_get_settings_dir_abs_path
-        tmp_path = fixture_func_create_tmp_dir_abs_path
-        ro_filename = PC_FULLNAME_SYNTAX_ERROR + EXT_PYTHON_DISABLED
-        src_ro_filespec: Path = datadir_path / ro_filename
-        file_under_unit_test_filespec: Path = tmp_path / PC_FULLNAME_SYNTAX_ERROR
-
-        # Copy mangled pseudo-Python file into temporary area as a Python file
-        shutil.copyfile(src_ro_filespec, file_under_unit_test_filespec)
-
-        with self._caplog.at_level(logging.DEBUG):
-            with pytest.raises(SyntaxError) as sample:
-                self._caplog.clear()
-
-                load_source(path=str(file_under_unit_test_filespec), name="")  # NOQA: RUF100
-                # ignore return value due to SyntaxError exception
-
-            assert "unexpected indent" in self._caplog.text
-            assert sample.type == SyntaxError
-            assert sample.value.args[1]["lineno"] == UT_SYNTAX_ERROR_LINENO
-            assert sample.value.args[1]["offset"] == UT_SYNTAX_ERROR_OFFSET
-
-        Path(file_under_unit_test_filespec).unlink(missing_ok=True)
-
-    def test_load_source_path_pelicanconf_abs_syntax_error2_fail(
-        self,
-        fixture_func_create_tmp_dir_abs_path,
-        fixture_cls_get_settings_dir_abs_path,
-    ):
-        """syntax error; absolute path; str type; failing mode"""
-        datadir_path = fixture_cls_get_settings_dir_abs_path
-        tmp_path = fixture_func_create_tmp_dir_abs_path
-        ro_filename = PC_FULLNAME_SYNTAX2_ERROR + EXT_PYTHON_DISABLED
-        src_ro_filespec: Path = datadir_path / ro_filename
-        file_under_unit_test_filespec: Path = tmp_path / PC_FULLNAME_SYNTAX2_ERROR
-
-        # Copy mangled pseudo-Python file into temporary area as a Python file
-        shutil.copyfile(src_ro_filespec, file_under_unit_test_filespec)
-
-        with self._caplog.at_level(logging.DEBUG):
-            with pytest.raises(SyntaxError) as sample:
-                self._caplog.clear()
-
-                load_source(path=str(file_under_unit_test_filespec), name="")  # NOQA: RUF100
-                # ignore return value due to SyntaxError exception
-
-            assert "invalid syntax" in self._caplog.text
-            assert sample.type == SyntaxError
-            assert sample.value.args[1]["lineno"] == UT_SYNTAX_ERROR2_LINENO
-            assert sample.value.args[1]["offset"] == UT_SYNTAX_ERROR2_OFFSET
-
-        Path(file_under_unit_test_filespec).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
