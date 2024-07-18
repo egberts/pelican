@@ -5,7 +5,6 @@ import inspect
 import locale
 import logging
 import os
-import pathlib
 import re
 import sys
 from os.path import isabs
@@ -177,13 +176,50 @@ DEFAULT_CONFIG = {
 PYGMENTS_RST_OPTIONS = None
 
 
-def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
+def canonicalize_module_name(module_name: str) -> str:
+    """Canonicalize the module name"""
+    # Squash module_name into PyPA canonical form
+    # PyPA specification:
+    #    A valid name consists only of ASCII letters and numbers, period,
+    #    underscore and hyphen. It must start and end with a letter or number
+    # Also Python squashes hyphen and period into underscore for Python module name.
+    canonical_module_name: str = module_name.lower()
+    canonical_module_name = canonical_module_name.replace(".", "_")
+    canonical_module_name = canonical_module_name.replace("-", "_")
+    canonical_module_name = canonical_module_name.replace("__", "_")
+    canonical_module_name = canonical_module_name.replace("__", "_")
+    canonical_module_name = canonical_module_name.replace("__", "_")
+    return canonical_module_name
+
+
+def validate_module_name(module_name: str) -> bool:
+    if not module_name[0].isalpha():
+        logger.error(
+            f"Module {module_name} name must begins with " "an alpha character."
+        )
+        return False
+    if not module_name[-1].isalpha():
+        logger.error(f"Module {module_name} name must ends with " "an alpha character.")
+        return False
+    if not module_name.isidentifier():
+        logger.error(
+            f"Module {module_name} name must contain alphanumeric "
+            "or underscore ('_')."
+        )
+        return False
+    return True
+
+
+def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     """
-    Loads the Python-syntax file as a module for application access
+    Loads the Python-syntax file as a module for immediate variable access and
+    application execution.
 
-    Only `path` shall be consulted for its actual file location.
+    No search path is used here; implied or not: `path` provides actual
+    non-searchable file location.  Using module name alone implies to "search"
+    only in the current working directory.
 
-    If module_name is not supplied as an argument, then its module name
+    If module name is not supplied as an argument, then its module name
     shall be extracted from given `path` argument but without any directory
     nor its file extension (just the basic pathLib.Path(path).stem part).
 
@@ -195,123 +231,203 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
     WARNING to DEVELOPER: If you programmatically used the "from" reserved
         Python keyword as in this "from pelicanconf import ..." statement, then you
         will not be able to free up the pelicanconf module, much
-        less use 'reload module' features.  (Not a likely scenario, but)
+        less use 'reload module' features.  (Not a likely scenario, but still usable)
 
-    :param path: filespec of the Python script file to load as Python module;
-                 `path` parameter may be a filename which is looked for in the
-                 current working directory, or a relative filename that looks
-                 only in that particular directory, or an absolute filename
-                 that also looks only in that absolute directory.
-    :type path: str | pathlib.Path
-    :param name: Optional argument to the Python module name to be loaded.
-                 `module_name` shall never use dotted notation nor any
-                 directory separator, just the plain filename (without
-                 any extension/suffix part).
+    :param name: Python module name to be loaded into `sys.modules[]`.
+
+                 PyPA Canonicalization is applied toward module name:
+                 replace any and all dash symbols with underscore,
+                 replace any and all period symbols with underscore,
+                 replace all contiguous underscores with a single underscore.
+
+                 Module name follows a naming convention for a valid Python module:
+                 no uppercase character,
+                 no dash symbol,
+                 no directory separator,
+                 first character shall be an alpha character,
+                 last character shall be an alpha character,
+                 rest of character shall be alphnum character or underscore.
+
+                 Also, no period symbol (a Pelican-specific requirement).
     :type name: str
+
+    :param path: optional filespec of the Python script file to load as Python module.
+                 If the module name is explicitly given, then the `path` parameter may
+                 be a:
+                 a directory path which a module is searched for,
+                 or a relative file path of the module file,
+                 or an absolute file to the module file.
+                 If the module name is left blank, then its module name is extracted
+                 and canonicalized from its file's filename (without file extension).
+
+                 Argument path can also be blank, which is treated equally a current
+                 working directory (`.`).
+    :type path: str | pathlib.Path
     :return: the ModuleType of the loaded Python module file.  Will be
             accessible in a form of "pelican.<module_name>".
     :rtype: ModuleType | None
+    :raises TypeError: invalid argument passed to this function
+    :raises SystemError: file extension is not supported by Python `importlib`
+    :raises FileNotFoundError: file is not found
+    :raises IsADirectoryError: was expecting a file, got something else
+    :raises PermissionError: file has no read access
+    :raises ValueError: incorrect value or invalid character in a string given
+    :raises ModuleNotFound: module not found in sys.modules[]
+    :raises ImportError: Python importlib error
+    :raises SyntaxError: given file has Python syntax error
+    :raises IndentationError: given file has Python indentation error
     """
-    if isinstance(path, str):
-        conf_filespec = pathlib.Path(path)
-    elif isinstance(path, pathlib.Path):
-        conf_filespec = path
-    else:
-        logger.fatal(
-            f"argument {path.__str__()} is not a pathLib.Path type nor a str type."
-        )
-        raise TypeError
 
-    absolute_filespec = conf_filespec.absolute()
-    filename_ext = conf_filespec.name
-    if not absolute_filespec.exists():
-        logger.error(f"File '{filename_ext!s}' not found.")
-        return None
-    if not absolute_filespec.is_file():
-        logger.error(f"Absolute '{conf_filespec!s}' path is not a file.")
-        return None
-    if not os.access(str(absolute_filespec), os.R_OK):
-        logger.error(f"'{absolute_filespec}' file is not readable.")
-        return None
-    resolved_absolute_filespec = absolute_filespec.resolve(strict=True)
+    # If module_name remains blank, it is a fatal condition.
+    module_name: str = ""
+    file_path: Path = Path(
+        "."
+    )  # os.getcwd() gets us an absolute path, we want relative
 
-    # We used to strip '.py' extension to make a module name out of it
-    # But we cannot take in anymore the user-supplied path for anything
-    #   (such as Pelican configuration settings file) as THE Python module
-    #   name for Pelican due to potential conflict with 300+ names of Python
-    #   built-in system module, such as `site.conf`, `calendar.conf`.
-    #   A complete list is in https://docs.python.org/3/py-modindex.html.
-    # Instead, force the caller of load_source to supply a Pelican-specific but
-    # statically fixed module_name to be associated with the end-user's choice
-    # of configuration filename.
+    if name is None and (path is None or path == ""):
+        err_str = "At least one argument is required"
+        logger.fatal(err_str)
+        raise SyntaxError(err_str)
 
-    module_name = ""
-    # if load_source(path=...) is used
-    if "name" not in locals():
-        # old load_source(path) prototype
-        module_name = pathlib.Path(path).stem
+    # Lots of interdependencies between name and path, try and get both values
+    # before making any further logic on it.
+    # name_arg_present = False
+    # guess_my_module_name = False
 
-    # if load_source(None, =...) is used
+    # Secure the module name
     if name is None:
-        logger.warning(
-            f"Module name is missing; using Python built-in to check "
-            f"PYTHONPATH for {absolute_filespec}"
-        )
-    # if load_source(value: not str, =...) is used
+        possible_module_name = ""
+        guess_my_module_name = True
+        # module_name is already an empty string here
+        #  Check if path can carry the water
+    # Enforce strong typing of argument; str type for module name
     elif not isinstance(name, str):
-        raise TypeError
-    # if load_source(name="", =...) is used
-    elif name == "":
-        module_name = pathlib.Path(path).stem
-    # if load_source(value: not str, =...) is used
-    elif isinstance(name, str):
-        module_name = name
-    else:
-        raise TypeError("load_source(name=...) argument is not a str type")
-
-    # One last thing to do before sys.modules check, is to deny any dotted module name
-    # This is a Pelican design issue (to support pelicanconf reloadability)
-    #
-    # Alternatively, do we want to support the approach of Python 'pelican.conf'
-    # module? Yes, but we couldn't, while it is the correct design to nest
-    # the configuration settings as a submodule behind Pelican (we should be
-    # able to), but Pelican design is restricted by Python sys.modules design.
-    #
-    # Also, we lose reload() capability once the alternative desired design of
-    # 'conf' submodule gets loaded by Python 'from' keyword.
-    #
-    # Hence, we do not support 'pelican.conf' due to Pelican reloadability requirement
-    #
-    # Judge have ruled the 'period' symbol in module name as disallowable.
-    if "." in module_name:
-        # load_connect() should return sys.exit by design, but no.
-        # Below fatal log is used AS-IS by test_settings_module.py unit test
-        logger.fatal(f"Cannot use dotted module name such as `{module_name}`.")
-        # Nothing fancy, return None
-        return None
-
-    # Nonetheless, we check that this module_name is not taken as well.
-    # Check that the module name is not in sys.module (like pathlib!!!)
-    if module_name in sys.modules:
-        # following logger.fatal is used as-is by test_settings_module.py unit test
-        logger.fatal(
-            f"Cannot reserved the module name already used"
-            f" by Python system module `{module_name}`."
+        err_msg = f"argument {name.__str__()} is not a str str type."
+        logger.fatal(err_msg)
+        raise TypeError(err_msg)
+    # Pelican constraint for module name is not to allow 'period' symbol
+    # due to lack of module nesting support.
+    # This is a given Pelican design issue to support pelicanconf reloadability.
+    elif "." in name:
+        err_msg = (
+            f"In Pelican only, module {name} name is not allow to "
+            "have a period symbol as nested module is not designed here."
         )
-        sys.exit(errno.EPERM)
+        logger.fatal(err_msg)
+        raise ValueError(err_msg)
+    elif name == "":
+        # Do we want to see if empty name= can be "autofilled"?
+        # Check if the `path=` is a valid file, later
+        guess_my_module_name = True
+        possible_module_name = ""
+    else:
+        # module name given is explicit, go with that.
+        guess_my_module_name = False
+        possible_module_name = name
 
-    #    if module_name == "":
-    #        module_name = "pelicanconf"
+    # Treat "", "." or None as the same as absolute form of current working directory
+    file_or_directory_flag = False
+
+    # Now check for path
+    if path is None:
+        file_or_directory_flag = False
+        # path_name is already an empty string here
+        #  Check if module name can carry the brunt
+    # Enforce strong typing of argument; str type or Path type for path name
+    elif not isinstance(path, str) and not isinstance(path, Path):
+        err_msg = f"argument {path.__str__()} is not a str or pathlib.Path type."
+        logger.fatal(err_msg)
+        raise TypeError(err_msg)
+    else:
+        # It might be a directory, or it might be a file but not determined here.
+        # Don't check path any further, go down to mixed-argument logic block
+        file_or_directory_flag = True
+        file_path = Path(path)
+
+    # Now we got values of both the name and the path ready for validation
+    # Of course, if both are inferred, we cannot do anything so SyntaxError that too
+    if not guess_my_module_name and not file_or_directory_flag:
+        err_msg = "Must supply at least one argument."
+        logger.error(err_msg)
+        raise SyntaxError(err_msg)
+
+    # Treat "", "." or None as the same as absolute form of current working directory
+
+    abs_file_path = file_path.absolute()
+    # file_path is already a get current working directory
+    logger.debug("file_path is inferred as CWD")
+    if not file_path.exists():
+        err_msg = f"File '{abs_file_path!s}' not found."
+        logger.error(err_msg)
+        raise FileNotFoundError(err_msg)
+    elif not os.access(str(abs_file_path), os.R_OK):
+        err_msg = f"'{abs_file_path}' file is not readable."
+        logger.error(err_msg)
+        raise PermissionError(err_msg)
+
+    if file_path.is_dir():
+        # path being a directory is only supported if module name is explicit
+        if guess_my_module_name:
+            raise IsADirectoryError(
+                "Supply missing argument; can only extract module name from a "
+                f"file path; not from an implied '{file_path}' directory."
+            )
+        logger.debug(f"Inferred path is: {abs_file_path}")
+        # valid directory in file_path
+    elif file_path.is_file():
+        # Valid file type and valid file_path
+        if guess_my_module_name:
+            possible_module_name = file_path.stem
+    else:  # path is neither a file nor a directory
+        err_msg = f"File {file_path} is neither a file nor a directory."
+        logger.error(err_msg)
+        raise OSError(err_msg)
+
+    absolute_filespec = file_path.absolute()
+    resolved_absolute_filespec = file_path.resolve()
+
+    # We got a valid module name with a valid directory or file path, or
+    # we got a valid explicit file path to a module (but no module name)
+
+    # At this point, we have enough to go and call our own `importlib` module
+
+    logger.debug(f"Possible module name: '{possible_module_name}'.")
+    if possible_module_name == "":
+        raise AssertionError("We screwed up; go fix the code")
+
+    # Got a valid module name at this point (explicit or extracted from filename)
+    module_name = canonicalize_module_name(possible_module_name)
+    if name != module_name:
+        logger.warning(
+            f"Canonical module name is now {module_name}; "
+            f"given argument value is: '{name}'; update the code."
+        )
+
+    if not validate_module_name(module_name):
+        err_msg = f"Error in validating module '{module_name}' name."
+        logger.error(err_msg)
+        raise ValueError(err_msg)
+
+    # Check that the module name is not in sys.module (like site or calendar!!!)
+    if module_name in sys.modules:
+        err_str = (
+            f"Given '{name}' module name is already taken by a Python "
+            f"system '{module_name}' module; it may be an "
+            "user-defined or a built-in."
+        )
+        # following logger.fatal is used as-is by test_settings_module.py unit test
+        logger.fatal(err_str)
+        raise SystemError(err_str)
+    # module_name is valid at this point
 
     try:
         # Using Python importlib, find the module using a full file path
         # specification and its filename and return this Module instance
-        module_spec = importlib.util.spec_from_file_location(
-            module_name, resolved_absolute_filespec
-        )
+        module_spec = importlib.util.spec_from_file_location(module_name, file_path)
         logger.debug(f"ModuleSpec '{module_name}' obtained from {absolute_filespec}.")
+
     except ImportError:
-        logger.fatal(
+        logger.error(
             f"Location {resolved_absolute_filespec} may be missing a "
             f"module `get_filename` attribute value."
         )
@@ -352,24 +468,26 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
         )
         return module_type
     except SyntaxError as e:
-        full_filespec = conf_filespec.resolve(strict=True)
+        # IndentationError, TabError are also subclass of SyntaxError
+        # Other non-runtime exceptions that are not handled herre are:
+        # SystemError and MemoryError.
         # Show where in the pelicanconf.py the offending syntax error is at via {e}.
         logger.error(
             f"{e}.\nHINT: "
-            f"Try executing `python {full_filespec}` "
+            f"Try executing `python {resolved_absolute_filespec}` "
             f"for better syntax troubleshooting."
         )
         # Trying something new, reraise the exception up
         raise SyntaxError(
-            f"Error invalid syntax at line number {e.end_lineno}"
+            f"Invalid syntax error at line number {e.end_lineno}"
             f" column offset {e.end_offset}",
             {
-                "filename": full_filespec,
+                "filename": resolved_absolute_filespec,
                 "lineno": int(e.lineno),
                 "offset": int(e.offset),
                 "text": e.text,
-                "end_lineno": int(e.end_lineno),
-                "end_offset": int(e.end_offset),
+                # "end_lineno": int(e.end_lineno),  # Python 3.10
+                # "end_offset": int(e.end_offset),  # Python 3.10
             },
         ) from e
     except Any as e:
@@ -380,7 +498,7 @@ def load_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
         sys.exit(errno.ENOEXEC)
 
 
-def reload_source(name: str, path: str | pathlib.Path) -> ModuleType | None:
+def reload_source(name: str, path: str | Path) -> ModuleType | None:
     """Reload the configuration settings file"""
     # first line of defense against errant built-in module name
     if name != DEFAULT_MODULE_NAME:
@@ -1008,3 +1126,7 @@ def configure_settings(settings: Settings, reload: None | bool = False) -> Setti
             continue  # setting not specified, nothing to do
 
     return settings
+
+
+# minimum Python 3.6 (vermin tool)
+# next upgrade, Python 3.10 (vermin tool)
