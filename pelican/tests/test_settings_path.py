@@ -99,7 +99,7 @@ def fixture_module_get_tests_dir_abs_path():
 
 
 class TestSettingsLoadSourcePath:
-    """load_source()"""
+    """load_source(), path()"""
 
     # Provided a file, it should read it, replace the default values,
     # append new values to the settings (if any), and apply basic settings

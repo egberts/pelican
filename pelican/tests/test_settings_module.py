@@ -3,7 +3,8 @@
 
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
 # Minimum version: Pytest 4.0, Python 3.8+
-
+import contextlib
+import copy
 import errno
 import inspect
 import locale
@@ -15,13 +16,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+import filelock
 import pytest
 from _pytest.logging import LogCaptureHandler, _remove_ansi_escape_sequences  # NOQA
 
 from pelican.settings import (
     load_source,
 )
-from pelican.tests.support import unittest
+
+TMP_DIRNAME_SUFFIX = "pelican"
 
 # Valid Python file extension
 EXT_PYTHON = ".py"
@@ -42,12 +45,24 @@ PC_FILENAME_UNREADABLE = "pelicanconf-unreadable"
 PC_FILENAME_SYNTAX_ERROR = "pelicanconf-syntax-error"
 
 # MODNAME_ = Module name
-PC_MODNAME_DEFAULT = PC_FILENAME_DEFAULT  # used if module_name is blank
-PC_MODNAME_VALID = PC_FILENAME_VALID
-PC_MODNAME_UNREADABLE = PC_FILENAME_UNREADABLE
-PC_MODNAME_NOT_EXIST = PC_FILENAME_NOTFOUND
-PC_MODNAME_DOTTED = "non-existing-module.cannot-get-there"  # there is a period
+PC_MODNAME_DEFAULT = "pelicanconf"  # used if module_name is blank
+PC_MODNAME_VALID = "pelicanconf_valid"
+PC_MODNAME_NOT_EXIST = "pelicanconf_not_found"
+PC_MODNAME_UNREADABLE = "pelicanconf_unreadable"
+PC_MODNAME_DOTTED = "non_existing_module.cannot_get_there"  # there is a period
+PC_MODNAME_SYNTAX_ERROR = "pelicanconf_syntax_error"
 PC_MODNAME_SYS_BUILTIN = "calendar"
+
+# Iterators, for unit test
+PC_MODULES_EXPECTED = {PC_MODNAME_SYS_BUILTIN}
+PC_MODULES_TEST = {
+    PC_MODNAME_DEFAULT,
+    PC_MODNAME_VALID,
+    PC_MODNAME_NOT_EXIST,
+    PC_MODNAME_UNREADABLE,
+    PC_MODNAME_DOTTED,
+    PC_MODNAME_SYNTAX_ERROR,
+}
 
 TMP_FILENAME_SUFFIX = PC_FILENAME_DEFAULT
 
@@ -88,21 +103,6 @@ logging.root.setLevel(logging.DEBUG)
 log.propagate = True
 
 
-def remove_read_permissions(path):
-    """Remove read permissions from this path, keeping all other permissions intact.
-
-    :param path:  The path whose permissions to alter.
-    :type path: str
-    """
-    no_user_reading = ~stat.S_IRUSR
-    no_group_reading = ~stat.S_IRGRP
-    no_other_reading = ~stat.S_IROTH
-    no_reading = no_user_reading & no_group_reading & no_other_reading
-
-    current_permissions = stat.S_IMODE(os.lstat(path).st_mode)
-    os.chmod(path, current_permissions & no_reading)
-
-
 # We need an existing Python system built-in module for testing load_source.
 if PC_MODNAME_SYS_BUILTIN not in sys.modules:
     pytest.exit(
@@ -121,10 +121,219 @@ if PC_MODNAME_DEFAULT in sys.modules:
     )
 
 
-class TestSettingsModuleName(unittest.TestCase):
+##########################################################################
+# session-based and module-based fixtures
+##########################################################################
+@pytest.fixture(scope="session")
+def fixture_session_lock(tmp_path_factory):
+    base_temp = tmp_path_factory.getbasetemp()
+    lock_file = base_temp.parent / "serial.lock"
+    yield filelock.FileLock(lock_file=str(lock_file))
+    with contextlib.suppress(OSError):
+        os.remove(path=lock_file)
+
+
+@pytest.fixture(scope="session")
+def fixture_session_locale(self):
+    """Select the locale"""
+    self.old_locale = locale.setlocale(locale.LC_ALL)
+    locale.setlocale(locale.LC_ALL, "C")
+
+    yield
+
+    locale.setlocale(locale.LC_ALL, self.old_locale)
+
+
+@pytest.fixture(scope="module")
+def fixture_module_get_tests_dir_abs_path():
+    """Get the absolute directory path of `tests` subdirectory
+
+    This pytest module-wide fixture will provide a full directory
+    path of this `test_settings_config.py`.
+
+    Note: used to assist in locating the `settings` directory underneath it.
+
+    This fixture gets evoked exactly once (file-wide) due to `scope=module`.
+
+    :return: Returns the Path of the tests directory
+    :rtype: pathlib.Path"""
+    abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
+    return abs_tests_dirpath
+
+
+##########################################################################
+# module-specific functions
+##########################################################################
+def remove_read_permissions(path):
+    """Remove read permissions from this path, keeping all other permissions intact.
+
+    :param path:  The path whose permissions to alter.
+    :type path: str
+    """
+    no_user_reading = ~stat.S_IRUSR
+    no_group_reading = ~stat.S_IRGRP
+    no_other_reading = ~stat.S_IROTH
+    no_reading = no_user_reading & no_group_reading & no_other_reading
+
+    current_permissions = stat.S_IMODE(os.lstat(path).st_mode)
+    os.chmod(path, current_permissions & no_reading)
+
+
+def module_expected_in_sys_modules(module_name: str) -> bool:
+    if module_name in sys.modules:
+        return True
+    AssertionError(f"Module {module_name} no longer is in sys.modules[].")
+
+
+def module_not_expected_in_sys_modules(module_name: str) -> bool:
+    if module_name not in sys.modules:
+        return True
+    AssertionError(f"Module {module_name} unexpectedly now in sys.modules[].")
+
+
+def check_module_integrity():
+    # Check if any modules were left behind by previous unit test(s).
+    for not_expected_module in PC_MODULES_TEST:
+        module_not_expected_in_sys_modules(not_expected_module)
+
+    # Now check that we did not lose any critical/built-in module.
+    for expected_module in PC_MODULES_EXPECTED:
+        module_expected_in_sys_modules(expected_module)
+
+
+##########################################################################
+#  All about the handling of module name
+##########################################################################
+class TestSettingsModuleName:
     """load_source() w/ module_name arg"""
 
-    # Exercises both the path and module_name arguments"""
+    ##########################################################################
+    #  Class-specific fixtures with focus on module name
+    ##########################################################################
+    @pytest.fixture(scope="class")
+    def fixture_cls_get_settings_dir_abs_path(
+        self, fixture_module_get_tests_dir_abs_path
+    ) -> Path:
+        """Get the absolute directory path of `tests/settings` subdirectory
+
+        This pytest class-wide fixture will provide the full directory
+        path of the `settings` subdirectory containing all the pelicanconf.py files.
+
+        This fixture gets evoked exactly once within its entire class due
+        to `scope=class`.
+
+        :return: Returns the absolute Path of the tests directory
+        :rtype: pathlib.Path"""
+        settings_dirpath: Path = fixture_module_get_tests_dir_abs_path / "settings"
+        return settings_dirpath
+
+    @pytest.fixture(scope="class")
+    def fixture_cls_get_settings_dir_rel_path(
+        self, fixture_module_get_tests_dir_abs_path
+    ) -> Path:
+        """Get the relative directory path of `tests/settings` subdirectory
+
+        This pytest class-wide fixture will provide the relative directory
+        path of the `settings` subdirectory containing all the pelicanconf.py files,
+        based off of its own current working directory.
+
+        This fixture gets evoked exactly once within its entire class due
+        to `scope=class`.
+
+        :return: Returns the relative Path of the tests directory
+        :rtype: pathlib.Path"""
+        settings_dirpath: Path = (
+            fixture_module_get_tests_dir_abs_path / "settings"
+        )  # TODO work your relative magic here
+        return settings_dirpath
+
+    @pytest.fixture(autouse=True)
+    def inject_fixtures(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    @pytest.fixture(scope="function")
+    def fixture_func_module_integrity(self, fixture_session_lock):
+        check_module_integrity()
+        yield
+        check_module_integrity()
+
+    @pytest.fixture(scope="function")
+    def fixture_func_serial(self, fixture_session_lock):
+        """mark function test as serial/sequential ordering
+
+        Include `serial` in the function's argument list ensures
+        that no other test(s) also having `serial` in its argument list
+        shall run."""
+        with fixture_session_lock.acquire(poll_interval=0.1):
+            yield
+
+    @pytest.fixture(scope="function")
+    def fixture_func_create_tmp_dir_abs_path(
+        self,
+        fixture_session_locale,  # temporary directory could have internationalization
+        fixture_cls_get_settings_dir_abs_path,
+        # redundant to specify other dependencies of sub-fixtures here such as:
+        #   fixture_cls_get_settings_dir_abs_path
+    ):
+        """Template the temporary directory
+
+        This pytest function-wide fixture will provide the template name of
+        the temporary directory.
+
+        This fixture executes exactly once every time a test case function references
+        this via `scope=function`."""
+        temporary_dir_path: Path = Path(
+            tempfile.mkdtemp(
+                dir=fixture_cls_get_settings_dir_abs_path, suffix=TMP_DIRNAME_SUFFIX
+            )
+        )
+        # An insurance policy in case a unit test modified the temporary_dir_path var.
+        original_tmp_dir_path = copy.deepcopy(temporary_dir_path)
+
+        yield temporary_dir_path
+
+        shutil.rmtree(original_tmp_dir_path)
+
+    @pytest.fixture(scope="function")
+    def fixture_func_create_tmp_dir_rel_path(  # TODO work your magic here for relative path
+        self,
+        fixture_session_locale,  # temporary directory could have internationalization
+        fixture_cls_get_settings_dir_abs_path,
+        # redundant to specify other dependencies of sub-fixtures here such as:
+        #   fixture_cls_get_settings_dir_abs_path
+    ):
+        """Template the temporary directory, in relative path format
+
+        This pytest function-wide fixture will provide the template name of
+        the temporary directory in relative path format.
+
+        This fixture executes exactly once every time a test case function references
+        this via `scope=function`."""
+        temporary_dir_path: Path = Path(
+            tempfile.mkdtemp(
+                dir=fixture_cls_get_settings_dir_abs_path, suffix=TMP_DIRNAME_SUFFIX
+            )
+        )
+        # An insurance policy in case a unit test modified the temporary_dir_path var.
+        original_tmp_dir_path = copy.deepcopy(temporary_dir_path)
+
+        yield temporary_dir_path
+
+        shutil.rmtree(original_tmp_dir_path)
+
+    @pytest.fixture(scope="function")
+    def fixture_func_ut_wrap(
+        self,
+        fixture_session_locale,
+        fixture_session_lock,
+        fixture_cls_get_settings_dir_abs_path,
+    ):
+        yield
+
+    ##########################################################################
+    #  Test cases with focus on module name
+    ##########################################################################
     def setUp(self):
         self.old_locale = locale.setlocale(locale.LC_ALL)
         locale.setlocale(locale.LC_ALL, "C")
@@ -183,11 +392,6 @@ class TestSettingsModuleName(unittest.TestCase):
                 "investigate faulty unit test"
             )
         # TODO delete any straggling temporary directory?
-
-    @pytest.fixture(autouse=True)
-    def inject_fixtures(self, caplog):
-        """add support for an assert based on subpattern in `caplog.text` output"""
-        self._caplog = caplog
 
     # Blank arguments test series, by path argument, str type
     def test_load_source_str_all_blank_fail(self):
@@ -1063,12 +1267,11 @@ class TestSettingsModuleName(unittest.TestCase):
         # TODO load_source() always always assert this SystemExit; add assert here?
 
 
-class TestSettingsGetFromFile(unittest.TestCase):
-    """Exercises get_from_settings_file()"""
-
-    def test_get_from_file(self):
-        assert True
-
-
 if __name__ == "__main__":
-    unittest.main()
+    # if executing this file alone, it tests this file alone.
+    # Can execute from any current working directory
+    pytest.main([__file__])
+
+    # more, complex variants of pytest.
+    # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
+    # pytest.main([__file__, "-n0"])  # single-process, single-thread
