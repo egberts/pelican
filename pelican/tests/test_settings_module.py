@@ -47,18 +47,18 @@ PC_FILENAME_SYNTAX_ERROR = "pelicanconf-syntax-error"
 # MODNAME_ = Module name
 PC_MODNAME_DEFAULT = "pelicanconf"  # used if module_name is blank
 PC_MODNAME_VALID = "pelicanconf_valid"
-PC_MODNAME_NOT_EXIST = "pelicanconf_not_found"
+PC_MODNAME_NOT_FOUND = "pelicanconf_not_found"
 PC_MODNAME_UNREADABLE = "pelicanconf_unreadable"
 PC_MODNAME_DOTTED = "non_existing_module.cannot_get_there"  # there is a period
 PC_MODNAME_SYNTAX_ERROR = "pelicanconf_syntax_error"
 PC_MODNAME_SYS_BUILTIN = "calendar"
 
-# Iterators, for unit test
+# Iterators, for fixtures
 PC_MODULES_EXPECTED = {PC_MODNAME_SYS_BUILTIN}
 PC_MODULES_TEST = {
     PC_MODNAME_DEFAULT,
     PC_MODNAME_VALID,
-    PC_MODNAME_NOT_EXIST,
+    PC_MODNAME_NOT_FOUND,
     PC_MODNAME_UNREADABLE,
     PC_MODNAME_DOTTED,
     PC_MODNAME_SYNTAX_ERROR,
@@ -102,6 +102,13 @@ log = logging.getLogger(__name__)
 logging.root.setLevel(logging.DEBUG)
 log.propagate = True
 
+args = inspect.getfullargspec(load_source)
+if ("name" not in args.args) and (args.args.__len__ != load_source_argument_count):
+    # Skip this entire test file if load_source() only supports 1 argument
+    pytest.skip(
+        "this class is only used with load_source() having "
+        "support for a 'module_name' argument"
+    )
 
 # We need an existing Python system built-in module for testing load_source.
 if PC_MODNAME_SYS_BUILTIN not in sys.modules:
@@ -122,10 +129,20 @@ if PC_MODNAME_DEFAULT in sys.modules:
 
 
 ##########################################################################
-# session-based and module-based fixtures
+#  session-based and module-based fixtures
 ##########################################################################
+@pytest.fixture(scope="session", autouse=True)
+def fixture_session_module_integrity(fixture_session_lock):
+    """Ensure that `sys.modules` is intact after all unit tests in this module"""
+    saved_sys_modules = sys.modules
+    yield
+    if not (saved_sys_modules == sys.modules):
+        AssertionError(f"Entire {__file__} failed to preserve sys.modules.")
+
+
 @pytest.fixture(scope="session")
 def fixture_session_lock(tmp_path_factory):
+    """Provide a locking file specific to this test session (per pytest)"""
     base_temp = tmp_path_factory.getbasetemp()
     lock_file = base_temp.parent / "serial.lock"
     yield filelock.FileLock(lock_file=str(lock_file))
@@ -134,14 +151,14 @@ def fixture_session_lock(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def fixture_session_locale(self):
-    """Select the locale"""
-    self.old_locale = locale.setlocale(locale.LC_ALL)
+def fixture_session_locale():
+    """Load/unload the locale"""
+    old_locale = locale.setlocale(locale.LC_ALL)
     locale.setlocale(locale.LC_ALL, "C")
 
     yield
 
-    locale.setlocale(locale.LC_ALL, self.old_locale)
+    locale.setlocale(locale.LC_ALL, old_locale)
 
 
 @pytest.fixture(scope="module")
@@ -162,7 +179,7 @@ def fixture_module_get_tests_dir_abs_path():
 
 
 ##########################################################################
-# module-specific functions
+#  module-specific (test_settings_modules.py) functions
 ##########################################################################
 def remove_read_permissions(path):
     """Remove read permissions from this path, keeping all other permissions intact.
@@ -182,13 +199,13 @@ def remove_read_permissions(path):
 def module_expected_in_sys_modules(module_name: str) -> bool:
     if module_name in sys.modules:
         return True
-    AssertionError(f"Module {module_name} no longer is in sys.modules[].")
+    raise AssertionError(f"Module {module_name} no longer is in sys.modules[].")
 
 
 def module_not_expected_in_sys_modules(module_name: str) -> bool:
     if module_name not in sys.modules:
         return True
-    AssertionError(f"Module {module_name} unexpectedly now in sys.modules[].")
+    raise AssertionError(f"Module {module_name} unexpectedly now in sys.modules[].")
 
 
 def check_module_integrity():
@@ -208,8 +225,14 @@ class TestSettingsModuleName:
     """load_source() w/ module_name arg"""
 
     ##########################################################################
-    #  Class-specific fixtures with focus on module name
+    #  Per-class fixtures with focus on module name
     ##########################################################################
+
+    @pytest.fixture(autouse=True)
+    def inject_fixtures(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
     @pytest.fixture(scope="class")
     def fixture_cls_get_settings_dir_abs_path(
         self, fixture_module_get_tests_dir_abs_path
@@ -247,10 +270,9 @@ class TestSettingsModuleName:
         )  # TODO work your relative magic here
         return settings_dirpath
 
-    @pytest.fixture(autouse=True)
-    def inject_fixtures(self, caplog):
-        """Save the console output by logger"""
-        self._caplog = caplog
+    ##########################################################################
+    #  Function-specific (per unit test) fixtures with focus on module name
+    ##########################################################################
 
     @pytest.fixture(scope="function")
     def fixture_func_module_integrity(self, fixture_session_lock):
@@ -315,298 +337,248 @@ class TestSettingsModuleName:
                 dir=fixture_cls_get_settings_dir_abs_path, suffix=TMP_DIRNAME_SUFFIX
             )
         )
-        # An insurance policy in case a unit test modified the temporary_dir_path var.
-        original_tmp_dir_path = copy.deepcopy(temporary_dir_path)
 
         yield temporary_dir_path
 
-        shutil.rmtree(original_tmp_dir_path)
-
+    ######################################################################
+    #  fixture_func_ut_wrap is a wrapper of all fixtures commonly
+    #  needed by all unit function/test cases
+    ######################################################################
     @pytest.fixture(scope="function")
     def fixture_func_ut_wrap(
         self,
-        fixture_session_locale,
-        fixture_session_lock,
-        fixture_cls_get_settings_dir_abs_path,
+        fixture_session_locale,  # internationalization
+        fixture_session_lock,  # serialization of unit test cases
+        fixture_func_module_integrity,  # sys.modules
+        fixture_cls_get_settings_dir_abs_path,  # tests/settings
+        # each test declares their own fixture_func_create_tmp_dir_[rel|abs]_path
     ):
         yield
 
     ##########################################################################
-    #  Test cases with focus on module name
+    #  Test cases with focus on Python module name
     ##########################################################################
-    def setUp(self):
-        self.old_locale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, "C")
-        self.saved_sys_modules = sys.modules
-
-        # Something interesting ...:
-        # below logic only works with ALL classes within a file
-        # and does not work within a selective class.
-        # So logic within this setUp() is file-wide, not per-class.
-
-        args = inspect.getfullargspec(load_source)
-        if ("name" not in args.args) and (
-            args.args.__len__ != load_source_argument_count
-        ):
-            # Skip this entire test file if load_source() only supports 1 argument
-            pytest.skip(
-                "this class is only used with load_source() having "
-                "support for a 'module_name' argument"
-            )
-
-    def tearDown(self):
-        locale.setlocale(locale.LC_ALL, self.old_locale)
-        if PC_MODNAME_SYS_BUILTIN not in sys.modules:
-            AssertionError(
-                f"A built-in module named {PC_MODNAME_SYS_BUILTIN} got "
-                "deleted; test setup failed"
-            )
-        if PC_MODNAME_DEFAULT in sys.modules:
-            del sys.modules[PC_MODNAME_DEFAULT]
-            AssertionError(
-                f"One of many unittests did not remove {PC_MODNAME_DEFAULT} module."
-            )
-        if PC_MODNAME_VALID in sys.modules:
-            del sys.modules[PC_MODNAME_VALID]
-            AssertionError(
-                f"One of many unittests did not remove {PC_MODNAME_VALID} module."
-            )
-        if PC_MODNAME_UNREADABLE in sys.modules:
-            del sys.modules[PC_MODNAME_UNREADABLE]
-            AssertionError(
-                f"One of many unittests did not remove {PC_MODNAME_UNREADABLE} module."
-            )
-        if PC_MODNAME_NOT_EXIST in sys.modules:
-            del sys.modules[PC_MODNAME_NOT_EXIST]
-            AssertionError(
-                f"One of many unittests did not remove {PC_MODNAME_NOT_EXIST} module."
-            )
-        if PC_MODNAME_DOTTED in sys.modules:
-            del sys.modules[PC_MODNAME_DOTTED]
-            AssertionError(
-                f"One of many unittests did not remove {PC_MODNAME_DOTTED} module."
-            )
-        if self.saved_sys_modules != sys.modules:
-            AssertionError(
-                "sys.modules was not restored to its original glory; "
-                "investigate faulty unit test"
-            )
-        # TODO delete any straggling temporary directory?
 
     # Blank arguments test series, by path argument, str type
-    def test_load_source_str_all_blank_fail(self):
+    def test_load_source_str_all_blank_fail(self, fixture_func_ut_wrap):
         """arguments all blank, str type; failing mode"""
-        # Supply blank string to each argument and fail
-        blank_filespec_str: str = ""
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        empty_path: str = ""
 
-        module_spec = load_source(module_name_str, blank_filespec_str)  # NOQA: RUF100
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, empty_path)
+
+        assert sample.type == IsADirectoryError
 
     # Proper combinatorial - Focusing firstly on the path argument using str type
-    def test_load_source_str_rel_dotted_fail(self):
+    def test_load_source_str_rel_dotted_fail(self, fixture_func_ut_wrap):
         """dotted relative directory, str type; blank module; failing mode"""
-        dotted_filespec_str: str = "."
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        relative_cwd_str: str = "."
 
-        module_spec = load_source(module_name_str, dotted_filespec_str)  # NOQA: RUF100
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, relative_cwd_str)
 
-    def test_load_source_str_rel_parent_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_str_rel_parent_fail(self, fixture_func_ut_wrap):
         """relative parent, str type; blank module; failing mode"""
-        parent_filespec_str: str = ".."
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        parent_dir_str: str = ".."
 
-        module_spec = load_source(module_name_str, parent_filespec_str)  # NOQA: RUF100
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, parent_dir_str)
 
-    def test_load_source_str_anchor_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_str_anchor_fail(self, fixture_func_ut_wrap):
         """anchor directory, str type; blank module; failing mode"""
-        anchor_filespec_str: str = os.sep
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        anchor_filespec_str: str = os.sep  # '/' for POSIX, '\' for Windows
 
-        module_spec = load_source(module_name_str, anchor_filespec_str)  # NOQA: RUF100
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, anchor_filespec_str)
 
-    def test_load_source_str_cwd_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_str_cwd_fail(self, fixture_func_ut_wrap):
         """current working dir, str type; blank module; failing mode"""
-        cwd_filespec_str: str = str(Path.cwd())
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        absolute_cwd_str: str = str(Path.cwd())
 
-        module_spec = load_source(module_name_str, cwd_filespec_str)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, absolute_cwd_str)
 
-    # Focusing on the path argument using Path type
-    def test_load_source_path_all_blank_fail(self):
+        assert sample.type == IsADirectoryError
+
+    # Focusing on the path argument using the `Path` type
+    def test_load_source_path_all_blank_fail(self, fixture_func_ut_wrap):
         """arguments blank; Path type; blank module; failing mode"""
-        # Supply blank string to each argument and fail
-        blank_filespec_path: Path = Path("")
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        empty_path: Path = Path("")
 
-        module_spec = load_source(module_name_str, blank_filespec_path)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, empty_path)
 
-    def test_load_source_path_dot_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_path_dot_fail(self, fixture_func_ut_wrap):
         """dotted directory, Path type; blank module; failing mode"""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
         dotted_filespec_path: Path = Path(".")
-        # Let the load_source() determine its module name
-        module_name_str = ""
 
-        module_spec = load_source(module_name_str, dotted_filespec_path)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, dotted_filespec_path)
 
-    def test_load_source_path_abs_anchor_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_path_abs_anchor_fail(self, fixture_func_ut_wrap):
         """anchor (absolute) directory, Path type; blank module; failing mode"""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
         anchor_filespec_path: Path = Path(os.sep)
-        # Let the load_source() determine its module name
-        module_name_str = ""
 
-        module_spec = load_source(module_name_str, anchor_filespec_path)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, anchor_filespec_path)
 
-    def test_load_source_path_rel_parent_fail(self):
+        assert sample.type == IsADirectoryError
+
+    def test_load_source_path_rel_parent_fail(self, fixture_func_ut_wrap):
         """parent relative directory, Path type; blank module; failing mode"""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
         parent_filespec_path: Path = Path("..")
-        # Let the load_source() determine its module name
-        module_name_str = ""
 
-        module_spec = load_source(module_name_str, parent_filespec_path)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, parent_filespec_path)
+        assert sample.type == IsADirectoryError
 
-    def test_load_source_path_abs_cwd_fail(self):
+    def test_load_source_path_abs_cwd_fail(self, fixture_func_ut_wrap):
         """current working (absolute) dir, Path type, blank module; failing mode"""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
         blank_filespec_path: Path = Path.cwd()
-        # Let the load_source() determine its module name
-        module_name_str = ""
 
-        module_spec = load_source(module_name_str, blank_filespec_path)
-        assert module_spec is None
+        with pytest.raises(IsADirectoryError) as sample:
+            load_source(empty_module, blank_filespec_path)
+
+        assert sample.type == IsADirectoryError
 
     # Actually start to try using Pelican configuration file
     # but with no module_name
-    def test_load_source_str_rel_valid_pass(self):
+    def test_load_source_str_rel_valid_pass(
+        self, fixture_func_ut_wrap, fixture_func_create_tmp_dir_rel_path
+    ):
         """valid relative path, str type; blank module; passing mode"""
-        tmp_rel_path: Path = Path(
-            tempfile.mkdtemp(dir=DIRSPEC_RELATIVE, suffix=TMP_FILENAME_SUFFIX)
-        )
+        tmp_rel_path = fixture_func_create_tmp_dir_rel_path
         valid_rel_filespec_str: str = str(tmp_rel_path / Path(".") / PC_FULLNAME_VALID)
         # Copy file to absolute temporary directory
         shutil.copy(RO_FILESPEC_REL_VALID_PATH, valid_rel_filespec_str)
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        implied_module = PC_MODNAME_VALID
 
-        # Let the load_source() determine its module name
-        module_name_str = ""
-        if PC_MODNAME_VALID in sys.modules:
-            AssertionError(
-                f"{PC_MODNAME_VALID} is still in sys.modules; fatal error " f"out"
-            )
+        module_spec = load_source(empty_module, valid_rel_filespec_str)
 
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
-
-            # ignore return value due to sys.exit()
-            module_spec = load_source(module_name_str, valid_rel_filespec_str)
-            assert module_spec is not None
-            assert hasattr(module_spec, "PATH"), (
-                f"The {valid_rel_filespec_str} file did not provide a PATH "
-                "object variable having a valid directory name, absolute or relative."
-            )
-
-        # Cleanup
-        if PC_MODNAME_VALID in sys.modules:  # module_name is blank
-            # del module after ALL asserts, errnos, and STDOUT
-            del sys.modules[PC_MODNAME_VALID]
-        Path(valid_rel_filespec_str).unlink(missing_ok=False)
-        # There is a danger of __pycache__ being overlooked here
-        shutil.rmtree(tmp_rel_path)
-
-    def test_load_source_str_abs_valid_pass(self):
-        """valid absolute path, str type; blank module; passing mode"""
-        # Set up absolute temporary directory
-        tmp_abs_path: Path = Path(tempfile.mkdtemp(TMP_FILENAME_SUFFIX))
-        valid_abs_filespec_str: str = str(tmp_abs_path / PC_FULLNAME_VALID)
-        # Let the load_source() determine its module name
-        module_name_str = ""
-        if PC_MODNAME_VALID in sys.modules:
-            AssertionError(
-                f"{PC_MODNAME_VALID} is still in sys.modules; fatal error " f"out"
-            )
-
-        # Copy file to absolute temporary directory
-        shutil.copy(RO_FILESPEC_REL_VALID_PATH, valid_abs_filespec_str)
-
-        module_spec = load_source(module_name_str, valid_abs_filespec_str)
-        # check if PATH is defined inside a valid Pelican configuration settings file
         assert module_spec is not None
         assert hasattr(module_spec, "PATH"), (
-            f"The {valid_abs_filespec_str} file did not provide a PATH "
+            f"The {valid_rel_filespec_str} file did not provide a PATH "
             "object variable having a valid directory name, absolute or relative."
         )
 
-        # Cleanup
-        if PC_MODNAME_VALID in sys.modules:
-            # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_VALID]
-        Path(valid_abs_filespec_str).unlink(missing_ok=False)
-        # There is a danger of __pycache__ being overlooked here
-        shutil.rmtree(tmp_abs_path)
+        if module_expected_in_sys_modules(implied_module):
+            del sys.modules[implied_module]
+        module_not_expected_in_sys_modules(implied_module)
+        Path(valid_rel_filespec_str).unlink(missing_ok=False)
+        shutil.rmtree(tmp_rel_path)
+
+    def test_load_source_str_abs_valid_pass(
+        self,
+        fixture_func_ut_wrap,
+        fixture_func_create_tmp_dir_abs_path,
+    ):
+        """valid absolute path, str type; blank module; passing mode"""
+        # Set up absolute temporary directory
+        tmp_abs_path: Path = fixture_func_create_tmp_dir_abs_path
+        tmp_valid_file: str = str(tmp_abs_path / PC_FULLNAME_VALID)
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        implied_module = PC_MODNAME_VALID
+        # Copy file to absolute temporary directory
+        shutil.copy(RO_FILESPEC_REL_VALID_PATH, tmp_valid_file)
+
+        module_spec = load_source(empty_module, tmp_valid_file)
+
+        # check if PATH is defined inside a valid Pelican configuration settings file
+        assert module_spec is not None
+        assert hasattr(module_spec, "PATH"), (
+            f"The {RO_FILESPEC_REL_VALID_PATH} file did not provide a PATH "
+            "object variable having a valid directory name, absolute or relative."
+        )
+
+        if module_expected_in_sys_modules(implied_module):
+            del sys.modules[implied_module]
+        module_not_expected_in_sys_modules(implied_module)
+        Path(tmp_valid_file).unlink(missing_ok=False)
 
     def test_load_source_str_rel_not_found_fail(self):
         """relative not found, str type; blank module; failing mode"""
         if RO_FILESPEC_REL_NOTFOUND_PATH.exists():
             AssertionError(f"{RO_FILESPEC_REL_NOTFOUND_PATH} should not exist.")
         missing_rel_filespec_str: str = str(RO_FILESPEC_REL_NOTFOUND_PATH)
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        implied_module = PC_MODNAME_NOT_FOUND
 
         # since load_source only returns None or Module, check STDERR for 'not found'
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
 
-            module_spec = load_source(module_name_str, missing_rel_filespec_str)
-            # but we have to check for warning
-            # message of 'assumed implicit module name'
-            assert module_spec is None
-            assert " not found" in self._caplog.text
+            with pytest.raises(FileNotFoundError) as sample:
+                load_source(empty_module, missing_rel_filespec_str)
 
-    def test_load_source_str_abs_not_found_fail(self):
+            assert sample.type == FileNotFoundError
+        assert " not found" in self._caplog.text
+
+        # Cannot unload module what has not been loaded
+        module_not_expected_in_sys_modules(implied_module)
+        # Cannot unlink what has not been created
+
+    def test_load_source_str_abs_not_found_fail(
+        self, fixture_func_create_tmp_dir_abs_path, fixture_func_ut_wrap
+    ):
         """absolute not found, str type; blank module; failing mode"""
         # Set up absolute temporary directory
-        tmp_abs_dirspec: Path = Path(tempfile.mkdtemp(TMP_FILENAME_SUFFIX))
+        tmp_abs_dirspec: Path = fixture_func_create_tmp_dir_abs_path
         notfound_abs_filespec_path: Path = tmp_abs_dirspec / PC_FULLNAME_NOTFOUND
         # No need to copy file, but must check that none is there
         if notfound_abs_filespec_path.exists():
             # Ouch, to delete or to absolute fail?  We fail here, instead.
             AssertionError(f"Errant '{notfound_abs_filespec_path} found; FAILED")
-        # Let the load_source() determine its module name
-        module_name_str = ""
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        implied_module = PC_MODNAME_NOT_FOUND
 
-        # since load_source only returns None or Module, check STDERR for 'not found'
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
+        with pytest.raises(FileNotFoundError) as sample:
+            load_source(empty_module, notfound_abs_filespec_path)
 
-            module_spec = load_source(module_name_str, notfound_abs_filespec_path)
-            # but we have to check for warning
-            # message of 'assumed implicit module name'
-            assert module_spec is None
-            assert " not found" in self._caplog.text
+        assert sample.type == FileNotFoundError
 
-        # Cleanup
-        # This tree should be empty
-        shutil.rmtree(tmp_abs_dirspec)
+        module_not_expected_in_sys_modules(implied_module)
 
-    def test_load_source_str_rel_no_access_fail(self):
+    def test_load_source_str_rel_no_access_fail(
+        self, fixture_func_create_tmp_dir_rel_path, fixture_func_ut_wrap
+    ):
         """relative not readable, str type; blank module; failing mode"""
         # Set up relative temporary directory "settings/pelicanXXXXXX"
-        rel_tmp_path: Path = Path(
-            tempfile.mkdtemp(
-                dir=DIRSPEC_RELATIVE,
-                suffix=TMP_FILENAME_SUFFIX,
-            )
-        )
+        rel_tmp_path: Path = fixture_func_create_tmp_dir_rel_path
         noaccess_rel_filespec_path: Path = rel_tmp_path / PC_FULLNAME_UNREADABLE
         # despite tempdir, check if file does NOT exist
         if noaccess_rel_filespec_path.exists():
@@ -623,30 +595,21 @@ class TestSettingsModuleName:
             AssertionError(
                 f"Errant '{noaccess_rel_filespec_str} unexpectedly readable; FAILED"
             )
-
-        # Let the load_source() determine its module name
-        module_name_str = ""
-        if PC_MODNAME_UNREADABLE in sys.modules:
-            AssertionError(
-                f"{PC_MODNAME_UNREADABLE} is still in sys.modules; fatal " f"error out"
-            )
+        # Let the load_source() determines the module name from its path
+        empty_module = ""
+        implied_module = PC_MODNAME_UNREADABLE
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
+            with pytest.raises(PermissionError) as sample:
+                load_source(empty_module, noaccess_rel_filespec_str)
 
-            module_spec = load_source(module_name_str, noaccess_rel_filespec_str)
-            # but we have to check for a warning
-            # message of 'assumed implicit module name'
-            assert module_spec is None
-            assert " is not readable" in self._caplog.text
+            assert sample.type == PermissionError
+        assert " is not readable" in self._caplog.text
 
         # Cleanup
-        if PC_MODNAME_UNREADABLE in sys.modules:
-            # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_UNREADABLE]
+        module_not_expected_in_sys_modules(implied_module)
         Path(noaccess_rel_filespec_path).unlink(missing_ok=False)
-        # There is a danger of __pycache__ being overlooked here only if this fails
-        shutil.rmtree(rel_tmp_path)
 
     def test_load_source_str_abs_no_access_fail(self):
         """absolute not readable, str type; blank module; failing mode"""
@@ -673,7 +636,7 @@ class TestSettingsModuleName:
                 f"Errant '{noaccess_abs_filespec_path} unexpectedly " "readable; FAILED"
             )
 
-        # Let the load_source() determine its module name
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
         if PC_FILENAME_UNREADABLE in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
@@ -708,9 +671,9 @@ class TestSettingsModuleName:
         valid_rel_filespec_path: Path = tmp_rel_path / PC_FULLNAME_VALID
         shutil.copyfile(RO_FILESPEC_REL_VALID_PATH, valid_rel_filespec_path)
 
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
         if PC_FILENAME_VALID in sys.modules:
-            # del module after ALL asserts, errnos, and STDOUT; before file removal
             del sys.modules[PC_FILENAME_VALID]
 
         module_spec = load_source(module_name_str, valid_rel_filespec_path)
@@ -741,7 +704,7 @@ class TestSettingsModuleName:
         valid_abs_filespec_path: Path = abs_tmp_path / PC_FULLNAME_VALID
         shutil.copy(RO_FILESPEC_REL_VALID_PATH, valid_abs_filespec_path)
 
-        # Let the load_source() determine its module name
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
         if PC_MODNAME_VALID in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
@@ -775,11 +738,11 @@ class TestSettingsModuleName:
             # Ouch, to delete or to absolute fail?  We fail here, instead.
             AssertionError(f"did not expect {notfound_rel_filespec_path} in a tempdir.")
 
-        # Let the load_source() determine its module name
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
-        if PC_MODNAME_NOT_EXIST in sys.modules:
+        if PC_MODNAME_NOT_FOUND in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
 
         # since load_source only returns None or Module, check STDERR for 'not found'
         with self._caplog.at_level(logging.DEBUG):
@@ -792,9 +755,9 @@ class TestSettingsModuleName:
             assert module_spec is None
 
         # Cleanup temporary
-        if PC_MODNAME_NOT_EXIST in sys.modules:  # module_name is blank
+        if PC_MODNAME_NOT_FOUND in sys.modules:  # module_name is blank
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
         shutil.rmtree(tmp_rel_dirspec_path)
 
     def test_load_source_path_abs_not_found_fail(self):
@@ -807,11 +770,11 @@ class TestSettingsModuleName:
             # Ouch, to delete or to absolute fail?  We fail here, instead.
             AssertionError(f"Errant '{missing_abs_filespec_path} found; FAILED")
 
-        # Let the load_source determine its module name, error-prone
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
-        if PC_MODNAME_NOT_EXIST in sys.modules:
+        if PC_MODNAME_NOT_FOUND in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
 
         # since load_source only returns None or Module, check STDERR for 'not found'
         with self._caplog.at_level(logging.DEBUG):
@@ -823,9 +786,9 @@ class TestSettingsModuleName:
             assert module_spec is None
             assert " not found" in self._caplog.text
 
-        if PC_MODNAME_NOT_EXIST in sys.modules:  # module_name is blank
+        if PC_MODNAME_NOT_FOUND in sys.modules:  # module_name is blank
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
         shutil.rmtree(tmp_abs_dirspec_path)
 
     def test_load_source_path_rel_no_access_fail(self):
@@ -849,7 +812,7 @@ class TestSettingsModuleName:
                 f"Errant '{noaccess_rel_filespec_path} unexpectedly " "readable; FAILED"
             )
 
-        # Let the load_source() determine its module name
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
         if PC_MODNAME_UNREADABLE in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
@@ -898,11 +861,11 @@ class TestSettingsModuleName:
                 f"Errant '{noaccess_abs_filespec_path} unexpectedly " "readable; FAILED"
             )
 
-        # Let the load_source() determine its module name
+        # Let the load_source() determines the module name from its path
         module_name_str = ""
-        if PC_MODNAME_NOT_EXIST in sys.modules:
+        if PC_MODNAME_NOT_FOUND in sys.modules:
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
@@ -912,9 +875,9 @@ class TestSettingsModuleName:
             assert " is not readable" in self._caplog.text
 
         # Cleanup
-        if PC_MODNAME_NOT_EXIST in sys.modules:  # module_name is blank
+        if PC_MODNAME_NOT_FOUND in sys.modules:  # module_name is blank
             # del module after ALL asserts, errnos, and STDOUT; before file removal
-            del sys.modules[PC_MODNAME_NOT_EXIST]
+            del sys.modules[PC_MODNAME_NOT_FOUND]
         Path(noaccess_abs_filespec_path).unlink(missing_ok=False)
         # There is a danger of __pycache__ being overlooked here only if this fails
         shutil.rmtree(tmp_abs_dirspec_path)
@@ -1197,7 +1160,7 @@ class TestSettingsModuleName:
     # Start misusing the module_name, but with valid (path type) path always
     def test_load_source_module_invalid_fail(self):
         """Non-existent module name; valid relative file, Path type; passing mode"""
-        module_not_exist = PC_MODNAME_NOT_EXIST
+        module_not_exist = PC_MODNAME_NOT_FOUND
         valid_filespec = RO_FILESPEC_REL_VALID_PATH
 
         if module_not_exist in sys.modules:
