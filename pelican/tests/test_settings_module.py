@@ -24,6 +24,11 @@ from pelican.settings import (
     load_source,
 )
 
+# To see collection/ordering of a fixture for a specific function, execute:
+#
+#  pytest -n0 --setup-plan \
+#  test_settings_module.py::TestSettingsModuleName::test_load_source_str_all_blank_fail
+
 TMP_DIRNAME_SUFFIX = "pelican"
 
 # Valid Python file extension
