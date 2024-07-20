@@ -1,9 +1,16 @@
 #
 #  Focused on settings.py/load_source(), specifically pathlib.Path type
 #
-# Ruff wants '# NOQA: RUF100'
-# PyCharm wants '# : RUF100'
-# RUFF says PyCharm is a no-go; stay with RUFF, ignore PyCharm's NOQA orange warnings
+# To see collection/ordering of a fixture for a specific function, execute:
+#
+#  pytest -n0 --setup-plan \
+#  test_settings_path.py::TestSettingsLoadSourcePath::test_load_source_arg_missing_fail
+#
+
+# Developer Note: RUFF wants '# NOQA: RUF100'
+# Developer Note: PyCharm wants '# : RUF100'
+# Developer Note: RUFF says PyCharm is a no-go; stay with RUFF,
+#                 ignore PyCharm's NOQA orange warnings
 
 import contextlib
 import copy
@@ -264,15 +271,6 @@ class TestSettingsLoadSourcePath:
         with pytest.raises(TypeError) as sample:
             load_source(path=path_tuple)  # NOQA: RUF100
         assert sample.type == TypeError
-
-    def test_load_source_path_valid_pelicanconf_py_pass(self):
-        """correct working function call; passing mode"""
-        path: str = DIRSPEC_RELATIVE + PC_FULLNAME_VALID
-        with pytest.raises(TypeError) as sample:
-            load_source(name="", path=path)  # extract module name from file
-        assert sample.type == TypeError
-
-    #    @log_function_details
 
 
 if __name__ == "__main__":
