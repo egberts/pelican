@@ -479,8 +479,8 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         )
         # Trying something new, reraise the exception up
         raise SyntaxError(
-            f"Invalid syntax error at line number {e.end_lineno}"
-            f" column offset {e.end_offset}",
+            f"Invalid syntax error at line number {e.lineno}"
+            f" column offset {e.offset}",
             {
                 "filename": resolved_absolute_filespec,
                 "lineno": int(e.lineno),
