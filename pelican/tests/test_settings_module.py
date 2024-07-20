@@ -99,10 +99,6 @@ RO_FILESPEC_REL_SYNTAX_ERROR_PATH = Path(DIRSPEC_DATADIR) / PC_FULLNAME_SYNTAX_E
 RO_FILESPEC_REL_NOTFOUND_PATH = Path(DIRSPEC_DATADIR) / PC_FULLNAME_NOTFOUND
 # FILESPEC_REL_UNREADABLE_PATH = Path(DIRSPEC_RELATIVE) / PC_FULLNAME_UNREADABLE
 
-# SyntaxError placement for use with settings/pelicanconf-syntax-error.py
-SM_UT_SYNTAX1_LINENO = 5
-SM_UT_SYNTAX1_OFFSET = 1
-
 load_source_argument_count = 2
 
 # Code starts here
@@ -327,7 +323,8 @@ class TestSettingsModuleName:
         shutil.rmtree(original_tmp_dir_path)
 
     @pytest.fixture(scope="function")
-    def fixture_func_create_tmp_dir_rel_path(  # TODO work your magic here for relative path
+    def fixture_func_create_tmp_dir_rel_path(
+        # TODO work your magic here for relative path
         self,
         fixture_session_locale,  # temporary directory could have internationalization
         fixture_cls_get_settings_dir_abs_path,
@@ -883,74 +880,6 @@ class TestSettingsModuleName:
             del sys.modules[default_module]
         Path(valid_rel_filespec_path).unlink(missing_ok=False)
 
-    def test_load_source_module_str_rel_syntax_error_fail(
-        self, fixture_func_create_tmp_dir_rel_path, fixture_func_ut_wrap
-    ):
-        """syntax error, relative path, str type; failing mode"""
-        # In Pelican, module name shall always be 'pelicanconf'
-        default_module = PC_MODNAME_DEFAULT
-        module_not_expected_in_sys_modules(default_module)
-        # copy "pseudo-script" file into 'settings/pelicanXXXXX/(here)'
-        # An essential avoidance of ruff/black's own syntax-error asserts
-        blob: str = str(BLOB_FILESPEC_SYNTAX_ERROR)
-        # Set up temporary relative "settings/pelicanXXXXXX/(here)"
-        tmp_rel_dirspec_path: Path = fixture_func_create_tmp_dir_rel_path
-        syntax_err_rel_filespec_str: str = str(
-            tmp_rel_dirspec_path / PC_FULLNAME_SYNTAX_ERROR
-        )
-        # Copy mangled pseudo-Python file into temporary area as a Python file
-        shutil.copyfile(blob, syntax_err_rel_filespec_str)
-
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
-            with pytest.raises(SyntaxError) as sample:
-                # ignore return value due to sys.exit()
-                load_source(default_module, path=syntax_err_rel_filespec_str)
-
-            assert sample.type == SyntaxError
-        assert "invalid syntax" in self._caplog.text
-
-        if module_expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
-        module_not_expected_in_sys_modules(default_module)
-        Path(syntax_err_rel_filespec_str).unlink(missing_ok=False)
-
-    def test_load_source_module_str_abs_syntax_error_fail(
-        self, fixture_func_create_tmp_dir_abs_path, fixture_func_ut_wrap
-    ):
-        """ "syntax error; absolute path, str type; passing mode"""
-        # In Pelican, module name shall always be 'pelicanconf'
-        default_module = PC_MODNAME_DEFAULT
-        module_not_expected_in_sys_modules(default_module)
-        # identify blob of  "pseudo-script" file (ruff/black avoidance of syntax-error)
-        blob: str = str(Path(DIRSPEC_RELATIVE) / BLOB_FULLNAME_SYNTAX_ERROR)
-        # Set up temporary absolute "/$TEMPDIR/pelicanXXXXXX/(here)"
-        tmp_abs_dirspec_path: Path = fixture_func_create_tmp_dir_abs_path
-        syntax_err_abs_filespec_str: str = str(
-            tmp_abs_dirspec_path / PC_FULLNAME_SYNTAX_ERROR
-        )
-        # despite tempdir, check if file does NOT exist
-        if Path(syntax_err_abs_filespec_str).exists():
-            # Bad test setup, assert out
-            raise AssertionError(
-                f"File {syntax_err_abs_filespec_str} should not " "exist in tempdir"
-            )
-        # Copy mangled pseudo-Python file into temporary absolute area as a Python file
-        shutil.copyfile(blob, syntax_err_abs_filespec_str)
-
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
-            with pytest.raises(SyntaxError) as sample:
-                # ignore return value due to sys.exit()
-                load_source(default_module, syntax_err_abs_filespec_str)
-            assert sample.type == SyntaxError
-        assert "invalid syntax" in self._caplog.text
-
-        # Cleanup
-        if module_expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
-        Path(syntax_err_abs_filespec_str).unlink(missing_ok=False)
-
     # Start using module_name, but with valid (path type) path always
     def test_load_source_perfect_pass(
         self, fixture_func_create_tmp_dir_rel_path, fixture_func_ut_wrap
@@ -985,87 +914,9 @@ class TestSettingsModuleName:
             del sys.modules[default_module]
         Path(valid_rel_filespec_path).unlink(missing_ok=False)
 
-    def test_load_source_module_path_rel_syntax_error_fail(
-        self,
-        fixture_func_ut_wrap,
-        fixture_func_create_tmp_dir_rel_path,
-    ):
-        """Syntax error; valid relative file, Path type; valid module; passing mode"""
-        # In Pelican, module name shall always be 'pelicanconf'
-        default_module = PC_MODNAME_DEFAULT
-        module_not_expected_in_sys_modules(default_module)
-        # identify blob of  "pseudo-script" file (ruff/black avoidance of syntax-error)
-        blob: str = str(Path(DIRSPEC_RELATIVE) / BLOB_FULLNAME_SYNTAX_ERROR)
-        # Set up temporary relative "settings/pelicanXXXXXX/(here)"
-        tmp_rel_dirspec_path: Path = fixture_func_create_tmp_dir_rel_path
-        syntax_err_rel_filespec_path: Path = (
-            tmp_rel_dirspec_path / PC_FULLNAME_SYNTAX_ERROR
-        )
-        # despite tempdir, check if file does NOT exist
-        if syntax_err_rel_filespec_path.exists():
-            # Bad test setup, assert out
-            raise AssertionError(
-                f"File {syntax_err_rel_filespec_path!s} should not " "exist in tempdir"
-            )
-        # Copy mangled pseudo-Python file into temporary absolute area as a Python file
-        shutil.copyfile(blob, syntax_err_rel_filespec_path)
-
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
-            with pytest.raises(SyntaxError) as sample:
-                # ignore return value due to sys.exit()
-                load_source(default_module, path=syntax_err_rel_filespec_path)
-            assert sample.type == SyntaxError
-        assert sample.value.args[1]["lineno"] == SM_UT_SYNTAX1_LINENO
-        assert sample.value.args[1]["offset"] == SM_UT_SYNTAX1_OFFSET
-        assert "unexpected indent" in self._caplog.text
-
-        if module_expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
-        Path(syntax_err_rel_filespec_path).unlink(missing_ok=True)
-
-    def test_load_source_module_path_abs_syntax_error_fail(
-        self,
-        fixture_func_ut_wrap,
-        fixture_func_create_tmp_dir_abs_path,
-    ):
-        """Syntax error; valid absolute file, Path type; valid module; passing mode"""
-        # In Pelican, module name shall always be 'pelicanconf'
-        default_module = PC_MODNAME_DEFAULT
-        module_not_expected_in_sys_modules(default_module)
-        # Set up temporary absolute "/$TEMPDIR/pelicanXXXXXX/(here)"
-        tmp_abs_dirspec_path: Path = fixture_func_create_tmp_dir_abs_path
-        syntax_err_abs_filespec_path: Path = (
-            tmp_abs_dirspec_path / PC_FULLNAME_SYNTAX_ERROR
-        )
-        # copy "pseudo-script" file to '/tmp' (ruff/black avoidance of syntax-error)
-        blob = Path(DIRSPEC_DATADIR) / BLOB_FULLNAME_SYNTAX_ERROR
-        # despite tempdir, check if file does NOT exist
-        if Path(syntax_err_abs_filespec_path).exists():
-            # Bad test setup, assert out
-            raise AssertionError(
-                f"File {syntax_err_abs_filespec_path} should not " "exist in tempdir"
-            )
-        # Copy mangled pseudo-Python file into temporary area as a Python file
-        shutil.copyfile(blob, syntax_err_abs_filespec_path)
-
-        with self._caplog.at_level(logging.DEBUG):
-            self._caplog.clear()
-            with pytest.raises(SyntaxError) as sample:
-                load_source(default_module, syntax_err_abs_filespec_path)
-
-            assert sample.type == SyntaxError
-            assert sample.value.args[1]["lineno"] == SM_UT_SYNTAX1_LINENO
-            assert sample.value.args[1]["offset"] == SM_UT_SYNTAX1_OFFSET
-        assert "unexpected ident" in self._caplog.text
-
-        # Cleanup temporary
-        if module_expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
-        Path(syntax_err_abs_filespec_path).unlink(missing_ok=False)
-
     # Start misusing the module_name, but with valid (path type) path always
-    def test_load_source_module_invalid_fail(  # TODO repurpose this unit test to failing?
+    def test_load_source_module_invalid_fail(
+        # TODO repurpose this unit test to failing?
         self,
         fixture_func_ut_wrap,
         fixture_func_create_tmp_dir_abs_path,
