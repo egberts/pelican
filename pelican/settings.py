@@ -226,12 +226,10 @@ def canonicalize_module_name(module_name: str) -> str:
 
 def validate_module_name(module_name: str) -> bool:
     if not module_name[0].isalpha():
-        logger.error(
-            f"Module {module_name} name must begins with " "an alpha character."
-        )
+        logger.error(f"Module {module_name} name must begins with an alpha character.")
         return False
     if not module_name[-1].isalpha():
-        logger.error(f"Module {module_name} name must ends with " "an alpha character.")
+        logger.error(f"Module {module_name} name must ends with an alpha character.")
         return False
     if not module_name.isidentifier():
         logger.error(
@@ -278,7 +276,8 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
                  no directory separator,
                  first character shall be an alpha character,
                  last character shall be an alpha character,
-                 rest of character shall be alphnum character or underscore.
+                 rest of any character(s) shall be alphnum character or a
+                 single contiguous underscore.
 
                  Also, no period symbol (a Pelican-specific requirement).
     :type name: str
@@ -292,29 +291,27 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
                  If the module name is left blank, then its module name is extracted
                  and canonicalized from its file's filename (without file extension).
 
-                 Argument path can also be blank, which is treated equally a current
-                 working directory (`.`).
+                 The `path` argument can also be blank, empty, or None, which is
+                 treated equally a current working directory (`.`).
     :type path: str | pathlib.Path
     :return: the ModuleType of the loaded Python module file.  Will be
             accessible in a form of "pelican.<module_name>".
     :rtype: ModuleType | None
-    :raises TypeError: invalid argument passed to this function
-    :raises SystemError: file extension is not supported by Python `importlib`
     :raises FileNotFoundError: file is not found
-    :raises IsADirectoryError: was expecting a file, got something else
-    :raises PermissionError: file has no read access
-    :raises ValueError: incorrect value or invalid character in a string given
-    :raises ModuleNotFound: module not found in sys.modules[]
     :raises ImportError: Python importlib error
-    :raises SyntaxError: given file has Python syntax error
     :raises IndentationError: given file has Python indentation error
+    :raises IOError: file access error
+    :raises IsADirectoryError: was expecting a file, got something else
+    :raises ModuleNotFound: module not found in sys.modules[]
+    :raises PermissionError: file has no read access
+    :raises SyntaxError: given file has Python syntax error
+    :raises SystemError: file extension is not supported by Python `importlib`
+    :raises TypeError: invalid argument passed to this function
+    :raises ValueError: incorrect value or invalid character in a string given
     """
 
-    # If module_name remains blank, it is a fatal condition.
+    # If this module_name remains blank after parsing, it is a fatal condition.
     module_name: str = ""
-    file_path: Path = Path(
-        "."
-    )  # os.getcwd() gets us an absolute path, we want relative
 
     if name is None and (path is None or path == ""):
         err_str = "At least one argument is required"
@@ -323,15 +320,13 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
 
     # Lots of interdependencies between name and path, try and get both values
     # before making any further logic on it.
-    # name_arg_present = False
-    # guess_my_module_name = False
 
     # Secure the module name
     if name is None:
         possible_module_name = ""
         guess_my_module_name = True
         # module_name is already an empty string here
-        #  Check if path can carry the water
+        #  Check if the `path` argument can carry the water
     # Enforce strong typing of argument; str type for module name
     elif not isinstance(name, str):
         err_msg = f"argument {name.__str__()} is not a str str type."
@@ -357,28 +352,26 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         guess_my_module_name = False
         possible_module_name = name
 
-    # Treat "", "." or None as the same as absolute form of current working directory
-    file_or_directory_flag = False
+    path_is_supplied_not_defaulted = False
+    # os.getcwd() gets us an absolute path, relative is needed here.
+    file_path: Path = Path(".")
 
     # Now check for path
-    if path is None:
-        file_or_directory_flag = False
-        # path_name is already an empty string here
-        #  Check if module name can carry the brunt
-    # Enforce strong typing of argument; str type or Path type for path name
-    elif not isinstance(path, str) and not isinstance(path, Path):
-        err_msg = f"argument {path.__str__()} is not a str or pathlib.Path type."
-        logger.fatal(err_msg)
-        raise TypeError(err_msg)
-    else:
-        # It might be a directory, or it might be a file but not determined here.
-        # Don't check path any further, go down to mixed-argument logic block
-        file_or_directory_flag = True
-        file_path = Path(path)
+    if path is not None:
+        # Enforce strong typing of argument; str type or Path type for path name
+        if not isinstance(path, str) and not isinstance(path, Path):
+            err_msg = f"argument {path.__str__()} is not a str or pathlib.Path type."
+            logger.fatal(err_msg)
+            raise TypeError(err_msg)
+        else:
+            # It might be a directory, or it might be a file but not determined here.
+            # Don't check path any further, go down to mixed-argument logic block
+            path_is_supplied_not_defaulted = True
+            file_path = Path(path)
 
     # Now we got values of both the name and the path ready for validation
     # Of course, if both are inferred, we cannot do anything so SyntaxError that too
-    if not guess_my_module_name and not file_or_directory_flag:
+    if not guess_my_module_name and not path_is_supplied_not_defaulted:
         err_msg = "Must supply at least one argument."
         logger.error(err_msg)
         raise SyntaxError(err_msg)
