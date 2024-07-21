@@ -3,6 +3,7 @@
 
 # Minimum version: Python 3.6 (tempfile.mkdtemp())
 # Minimum version: Pytest 4.0, Python 3.8+
+
 import contextlib
 import copy
 import errno
@@ -134,8 +135,21 @@ if PC_MODNAME_DEFAULT in sys.modules:
 
 
 ##########################################################################
-#  session-based and module-based fixtures
+#  Fixtures, at session-scope and module-scope
 ##########################################################################
+
+
+@pytest.fixture(scope="session")
+def fixture_session_locale():
+    """Support the locale"""
+    old_locale = locale.setlocale(locale.LC_ALL)
+    locale.setlocale(locale.LC_ALL, "C")
+
+    yield
+
+    locale.setlocale(locale.LC_ALL, old_locale)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def fixture_session_module_integrity(fixture_session_lock):
     """Ensure that `sys.modules` is intact after all unit tests in this module"""
@@ -153,17 +167,6 @@ def fixture_session_lock(tmp_path_factory):
     yield filelock.FileLock(lock_file=str(lock_file))
     with contextlib.suppress(OSError):
         os.remove(path=lock_file)
-
-
-@pytest.fixture(scope="session")
-def fixture_session_locale():
-    """Load/unload the locale"""
-    old_locale = locale.setlocale(locale.LC_ALL)
-    locale.setlocale(locale.LC_ALL, "C")
-
-    yield
-
-    locale.setlocale(locale.LC_ALL, old_locale)
 
 
 @pytest.fixture(scope="module")
@@ -187,6 +190,7 @@ def fixture_module_get_tests_dir_abs_path():
 #  module-specific (test_settings_modules.py) functions
 ##########################################################################
 def remove_read_permissions(path):
+    """Removes the read-bit in its file permission"""
     """Remove read permissions from this path, keeping all other permissions intact.
 
     :param path:  The path whose permissions to alter.
@@ -202,12 +206,14 @@ def remove_read_permissions(path):
 
 
 def module_expected_in_sys_modules(module_name: str) -> bool:
+    """Ensure that its module is still in `sys.modules`."""
     if module_name in sys.modules:
         return True
     raise AssertionError(f"Module {module_name} no longer is in sys.modules[].")
 
 
 def module_not_expected_in_sys_modules(module_name: str) -> bool:
+    """Not expecting its module left behind in `sys.modules`."""
     if module_name not in sys.modules:
         return True
     raise AssertionError(f"Module {module_name} unexpectedly now in sys.modules[].")
@@ -281,13 +287,14 @@ class TestSettingsModuleName:
 
     @pytest.fixture(scope="function")
     def fixture_func_module_integrity(self, fixture_session_lock):
+        """Ensure that modules remain intact inside `sys.modules`"""
         check_module_integrity()
         yield
         check_module_integrity()
 
     @pytest.fixture(scope="function")
     def fixture_func_serial(self, fixture_session_lock):
-        """mark function test as serial/sequential ordering
+        """mark this function test as part of a serial/sequential ordering
 
         Include `serial` in the function's argument list ensures
         that no other test(s) also having `serial` in its argument list
@@ -298,12 +305,12 @@ class TestSettingsModuleName:
     @pytest.fixture(scope="function")
     def fixture_func_create_tmp_dir_abs_path(
         self,
-        fixture_session_locale,  # temporary directory could have internationalization
         fixture_cls_get_settings_dir_abs_path,
+        fixture_session_locale,  # temporary directory could have internationalization
         # redundant to specify other dependencies of sub-fixtures here such as:
         #   fixture_cls_get_settings_dir_abs_path
     ):
-        """Template the temporary directory
+        """Create a temporary directory using an absolute path
 
         This pytest function-wide fixture will provide the template name of
         the temporary directory.
@@ -331,7 +338,7 @@ class TestSettingsModuleName:
         # redundant to specify other dependencies of sub-fixtures here such as:
         #   fixture_cls_get_settings_dir_abs_path
     ):
-        """Template the temporary directory, in relative path format
+        """Create a temporary directory, using a relative path
 
         This pytest function-wide fixture will provide the template name of
         the temporary directory in relative path format.
@@ -349,6 +356,40 @@ class TestSettingsModuleName:
     ######################################################################
     #  fixture_func_ut_wrap is a wrapper of all fixtures commonly
     #  needed by all unit function/test cases
+    #
+    # The `fixture_func_ut_wrap` fixture, if inserted into an argument list of
+    # a function # (or a fixture) declaration statement, shall evoke the additional
+    # fixtures in nested-order.
+    #
+    # To see the nested-ordering of setup/teardown by functions (and fixtures), execute:
+    #
+    # `$ pytest -n0 setup-plan`
+    #
+    # S tmp_path_factory
+    # S fixture_session_lock(fixtures used: tmp_path_factory)
+    # S fixture_session_module_integrity(fixtures used: fixture_session_lock)
+    # S fixture_session_locale
+    #   M fixture_module_get_tests_dir_abs_path
+    #     C fixture_cls_get_settings_dir_abs_path
+    #       F caplog
+    #       F inject_fixtures(fixtures used: caplog)
+    #       F fixture_func_module_integrity
+    #       F fixture_func_ut_wrap
+    #       F fixture_func_create_tmp_dir_abs_path
+    # pelican / tests / test_settings_module.py::TestSettingsModuleName::test_load_source_module_invalid_fail( fixtures used: caplog, fixture_cls_get_settings_dir_abs_path, fixture_func_create_tmp_dir_abs_path, fixture_func_module_integrity, fixture_func_ut_wrap, fixture_module_get_tests_dir_abs_path, fixture_session_locale, fixture_session_lock, fixture_session_module_integrity, inject_fixtures, request, tmp_path_factory)
+    #       F fixture_func_create_tmp_dir_abs_path
+    #       F fixture_func_ut_wrap
+    #       F fixture_func_module_integrity
+    #       F inject_fixtures
+    #       F caplog
+    #     C fixture_cls_get_settings_dir_abs_path
+    #   M fixture_module_get_tests_dir_abs_path
+    # S fixture_session_locale
+    # S fixture_session_module_integrity
+    # S fixture_session_lock
+    #
+    # Legend: S=session, M=module, C=class, F=function
+
     ######################################################################
     @pytest.fixture(scope="function")
     def fixture_func_ut_wrap(
@@ -356,7 +397,7 @@ class TestSettingsModuleName:
         fixture_session_locale,  # internationalization
         fixture_session_lock,  # serialization of unit test cases
         fixture_func_module_integrity,  # sys.modules
-        fixture_cls_get_settings_dir_abs_path,  # tests/settings
+        fixture_cls_get_settings_dir_abs_path,  # 'tests/settings' location
         # each test declares their own fixture_func_create_tmp_dir_[rel|abs]_path
     ):
         yield

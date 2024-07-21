@@ -68,7 +68,9 @@ log.propagate = True
 #
 # Weird thing about putting fixture(s) inside a function/procedure argument list
 # is that the ordering of its argument DOES NOT matter: this is a block programming
-# thing, not like most procedural programming languages.
+# thing, not like most procedural programming languages; use of pytest now
+# employs two-pass before execution; first pass constructs dependency of fixtures,
+# second pass is the regular Python syntax checker.
 #
 # To see collection/ordering of fixtures, execute:
 #
@@ -77,6 +79,14 @@ log.propagate = True
 #
 #
 # Using class in pytest is a way of aggregating similar test cases together.
+
+
+@pytest.fixture(autouse=True)
+# If no `scope=`, defaults to `scope=function` ... always.
+# `autouse=True` means evoke it no matter if function listed `inject_fixtures` in
+# its argument-list or not.
+def inject_fixtures(self, caplog):
+    self._caplog = caplog
 
 
 @pytest.fixture(scope="session")
@@ -177,10 +187,6 @@ class TestSettingsLoadSourcePath:
         yield
         # old tearDown() portion
         locale.setlocale(locale.LC_ALL, self.old_locale)
-
-    @pytest.fixture(autouse=True)
-    def inject_fixtures(self, caplog):
-        self._caplog = caplog
 
     # Emptiness
     def test_load_source_arg_missing_fail(self):
