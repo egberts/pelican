@@ -1,7 +1,7 @@
-Notes on pytest v4.0 (customized for Pelican)
+Notes on unittest (customized for Pelican)
 
 ## Simple Test Case
-a test as being broken down into four steps:
+Each test is broken down into four steps:
 
 1. Arrange
 2. Act
@@ -21,16 +21,23 @@ inclusion scope to smallest:
 * Function (`func`)
 * Test order (`test_order`)
 
-## Class naming convention under pytest
+## Class naming convention under unittest
 
-Filename of a unittest case shall begins with `test_` or ends with `_test`.
+Unittest filename shall begin with `test_`.  Add the Pelican source filename as a suffix to `test_`.
+(i.e. `test_settings.py`, `test_utils.py`)  If an unittest file gets too big (around +1000 lines), such file
+should be divided using additional suffixes (`test_settings_syntax.py`, `test_settings_module.py`).
+Pytest is probably a great idea at this point since modularization can be done and shared amongst other
+function test.
 
-Class name shall begin with 'Test' and in camelcase notation. Examples are:
+Class name shall begin with 'Test' and in CamelCase notation. Examples are:
 `TestSettings`, `TestServer`, as those are required when using
-`unittest.TestCase` as a class feature.
+`unittest.TestCase`.
 
-(Unit) Test name shall begin with 'test_' and in snake case notation.  Examples
-are:  `test_settings`, `test_settings_config`, `test_settings_module`.
+Test function name shall begin with '`test_`' and in snake_case notation.  Use its function name that is
+being tested as the suffix toward '`test_`'.  Suffixes no longer needs to refer to its Pelican source filename.
+Examples are `test_load_source_`, `test_configure_settings`, `test_read_config`.
+
+Organized test functions shall fall into their respective class by its functional characteristic.
 
 ## Setup and Teardowns, Scoping ##
 
@@ -145,8 +152,9 @@ needed ... yet but may get broke in future `importlib`.
 
 Do a test that built-in modules remains left as untouched (DONE, `tearDown()`)
 
-## Multi-Process `pytest`
+## Multi-Process `unittest`
 Tests will crap out in N-processes if using `mktemp`, et al.; within `setUp()`.
+Unittest is not well-suited for massively parallelization testing; seriously consider using pytest instead.
 
 # References
 * [tmp_path](https://docs.pytest.org/en/latest/how-to/tmp_path.html)
