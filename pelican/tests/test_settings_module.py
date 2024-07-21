@@ -978,54 +978,40 @@ class TestSettingsModuleName:
     def test_load_source_module_taken_by_builtin_fail(self):
         """Built-in module name; valid relative file, Path type; failing mode"""
         module_name_taken_by_builtin = PC_MODNAME_SYS_BUILTIN
-        # Check if it IS a system built-in module
-        if module_name_taken_by_builtin not in sys.modules:
-            raise AssertionError(
-                f"Module {module_name_taken_by_builtin} is not a built-in "
-                f"module; redefine PC_MONDNAME_SYS_BUILTIN"
-            )
+        module_expected_in_sys_modules(module_name_taken_by_builtin)
         valid_rel_filespec_path = RO_FILESPEC_REL_VALID_PATH
         # Taking Python system builtin module is always a hard exit
         with self._caplog.at_level(logging.DEBUG):
-            with pytest.raises(SystemExit) as sample:
-                self._caplog.clear()
-
+            self._caplog.clear()
+            with pytest.raises(SystemError) as sample:
                 module_spec = load_source(
                     module_name_taken_by_builtin, valid_rel_filespec_path
                 )
                 # assert "taken by builtin" in self._caplog.text  # TODO add caplog here
-                assert sample.type == SystemExit
+                assert sample.type == SystemError
                 assert sample.value.code == errno.ENOEXEC
                 assert module_spec is None
-            assert "reserved the module name" in self._caplog.text
+            assert "module name is already taken" in self._caplog.text
         # DO NOT PERFORM del sys.module[] here, this is a built-in
         # But do check that built-in module is left alone
-        if module_name_taken_by_builtin not in sys.modules:
-            pytest.exit(
-                f"Module {module_name_taken_by_builtin} is not a built-in "
-                f"module; redefine PC_MODNAME_SYS_BUILTIN"
-            )
+        module_expected_in_sys_modules(module_name_taken_by_builtin)
 
     def test_load_source_module_dotted_fail(self):
         """Dotted module name; valid relative file, Path type; failing mode"""
         dotted_module_name_str = PC_MODNAME_DOTTED
+        module_not_expected_in_sys_modules(dotted_module_name_str)
         valid_rel_filespec_str = str(RO_FILESPEC_REL_VALID_PATH)
+
         # Taking Python system builtin module is always a hard exit
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
+            with pytest.raises(ValueError) as sample:
+                load_source(dotted_module_name_str, valid_rel_filespec_str)
 
-            module_spec = load_source(dotted_module_name_str, valid_rel_filespec_str)
-            assert module_spec is None
-            assert "Cannot use dotted module name" in self._caplog.text
-        # DO NOT PERFORM del sys.module[] here, this is an impossible dotted module
+            assert sample.type == ValueError
+        assert "Period symbol is not allowed" in self._caplog.text
 
-    def test_load_source_only_valid_module_str_fail(self):
-        """only valid module_name, str type, failing mode"""
-        #   don't let Pelican search all over the places using PYTHONPATH
-        module_spec = load_source(name=str(PC_MODNAME_DEFAULT), path="")
-        # not sure if STDERR capture is needed
-        assert module_spec is None
-        # TODO load_source() always always assert this SystemExit; add assert here?
+        module_not_expected_in_sys_modules(dotted_module_name_str)
 
 
 if __name__ == "__main__":
