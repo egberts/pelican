@@ -226,14 +226,14 @@ def canonicalize_module_name(module_name: str) -> str:
 
 def validate_module_name(module_name: str) -> bool:
     if not module_name[0].isalpha():
-        logger.error(f"Module {module_name} name must begins with an alpha character.")
+        logger.error(f"First character in {module_name} name must be an alpha.")
         return False
     if not module_name[-1].isalpha():
-        logger.error(f"Module {module_name} name must ends with an alpha character.")
+        logger.error(f"Last character {module_name} name must be an alpha.")
         return False
     if not module_name.isidentifier():
         logger.error(
-            f"Module {module_name} name must contain alphanumeric "
+            f"Module {module_name} name must contain only alphanumeric "
             "or underscore ('_')."
         )
         return False
@@ -314,7 +314,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     module_name: str = ""
 
     if name is None and (path is None or path == ""):
-        err_str = "At least one argument is required"
+        err_str = "At least one argument is required."
         logger.fatal(err_str)
         raise SyntaxError(err_str)
 
@@ -329,17 +329,14 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         #  Check if the `path` argument can carry the water
     # Enforce strong typing of argument; str type for module name
     elif not isinstance(name, str):
-        err_msg = f"argument {name.__str__()} is not a str str type."
+        err_msg = f"argument {name.__str__()} is not a 'str' type."
         logger.fatal(err_msg)
         raise TypeError(err_msg)
     # Pelican constraint for module name is not to allow 'period' symbol
     # due to lack of module nesting support.
     # This is a given Pelican design issue to support pelicanconf reloadability.
     elif "." in name:
-        err_msg = (
-            f"In Pelican only, module {name} name is not allow to "
-            "have a period symbol as nested module is not designed here."
-        )
+        err_msg = f"Period symbol is not allowed in module {name} name."
         logger.fatal(err_msg)
         raise ValueError(err_msg)
     elif name == "":
@@ -360,7 +357,9 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     if path is not None:
         # Enforce strong typing of argument; str type or Path type for path name
         if not isinstance(path, str) and not isinstance(path, Path):
-            err_msg = f"argument {path.__str__()} is not a str or pathlib.Path type."
+            err_msg = (
+                f"Argument {path.__str__()} is not a 'str' nor a 'pathlib.Path' type."
+            )
             logger.fatal(err_msg)
             raise TypeError(err_msg)
         else:
@@ -380,13 +379,13 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
 
     abs_file_path = file_path.absolute()
     # file_path is already a get current working directory
-    logger.debug("file_path is inferred as CWD")
+    logger.debug(f"{file_path} is inferred as current working directory.")
     if not file_path.exists():
-        err_msg = f"File '{abs_file_path!s}' not found."
+        err_msg = f"File '{abs_file_path!s}' is not found."
         logger.error(err_msg)
         raise FileNotFoundError(err_msg)
     elif not os.access(str(abs_file_path), os.R_OK):
-        err_msg = f"'{abs_file_path}' file is not readable."
+        err_msg = f"File '{abs_file_path}' is not readable."
         logger.error(err_msg)
         raise PermissionError(err_msg)
 
@@ -394,7 +393,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         # path being a directory is only supported if module name is explicit
         if guess_my_module_name:
             raise IsADirectoryError(
-                "Supply missing argument; can only extract module name from a "
+                "Supply missing module name; can only extract module name from a "
                 f"file path; not from an implied '{file_path}' directory."
             )
         logger.debug(f"Inferred path is: {abs_file_path}")
@@ -404,7 +403,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         if guess_my_module_name:
             possible_module_name = file_path.stem
     else:  # path is neither a file nor a directory
-        err_msg = f"File {file_path} is neither a file nor a directory."
+        err_msg = f"File {file_path} is not a file nor a directory."
         logger.error(err_msg)
         raise OSError(err_msg)
 
@@ -425,7 +424,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     if name != module_name:
         logger.warning(
             f"Canonical module name is now {module_name}; "
-            f"given argument value is: '{name}'; update the code."
+            f"given argument value is: '{name}'; update the `name` argument."
         )
 
     if not validate_module_name(module_name):
@@ -502,7 +501,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
             f"Try executing `python {resolved_absolute_filespec}` "
             f"for better syntax troubleshooting."
         )
-        # Trying something new, reraise the exception up
+        # reraise the exception up but with even more details
         raise SyntaxError(
             f"Invalid syntax error at line number {e.lineno}"
             f" column offset {e.offset}",
