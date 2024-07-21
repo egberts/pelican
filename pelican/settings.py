@@ -5,6 +5,7 @@ import inspect
 import locale
 import logging
 import os
+import platform
 import re
 import sys
 from os.path import isabs
@@ -175,6 +176,31 @@ DEFAULT_CONFIG = {
 
 PYGMENTS_RST_OPTIONS = None
 
+FORBIDDEN_WINDOWS_FILENAME = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
+}
+
 
 def canonicalize_module_name(module_name: str) -> str:
     """Canonicalize the module name"""
@@ -189,6 +215,12 @@ def canonicalize_module_name(module_name: str) -> str:
     canonical_module_name = canonical_module_name.replace("__", "_")
     canonical_module_name = canonical_module_name.replace("__", "_")
     canonical_module_name = canonical_module_name.replace("__", "_")
+
+    if platform.system() == "Windows":
+        if canonical_module_name.upper() in FORBIDDEN_WINDOWS_FILENAME:
+            raise OSError(
+                f"Filename {canonical_module_name} is a reserved " "Windows filename."
+            )
     return canonical_module_name
 
 
