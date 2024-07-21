@@ -381,7 +381,7 @@ class TestSettingsSyntax:
                 load_source(default_module, path=syntax_err_rel_filespec_str)
 
             assert sample.type == SyntaxError
-        assert "invalid syntax" in self._caplog.text
+        assert "unexpected indent" in self._caplog.text
 
         if module_expected_in_sys_modules(default_module):
             del sys.modules[default_module]
@@ -417,7 +417,7 @@ class TestSettingsSyntax:
                 # ignore return value due to sys.exit()
                 load_source(default_module, syntax_err_abs_filespec_str)
             assert sample.type == SyntaxError
-        assert "invalid syntax" in self._caplog.text
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
         if module_expected_in_sys_modules(default_module):
@@ -496,7 +496,7 @@ class TestSettingsSyntax:
             assert sample.type == SyntaxError
             assert sample.value.args[1]["lineno"] == SM_UT_SYNTAX1_LINENO
             assert sample.value.args[1]["offset"] == SM_UT_SYNTAX1_OFFSET
-        assert "unexpected ident" in self._caplog.text
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup temporary
         if module_expected_in_sys_modules(default_module):
