@@ -3,6 +3,7 @@ Pygments==2.14.0
 pytest
 pytest-cov
 pytest-xdist[psutil]
+filelock
 
 # Optional Packages
 Markdown==3.5.1
