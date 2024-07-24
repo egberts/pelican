@@ -19,6 +19,22 @@ assignees: ''
 - [ ] I have read the [Filing Issues](https://docs.getpelican.com/en/latest/contribute.html#filing-issues) and subsequent “How to Get Help” sections of the documentation.
 - [ ] I have searched the [issues](https://github.com/getpelican/pelican/issues?q=is%3Aissue) (including closed ones) and believe that this is not a duplicate.
 
+
+
+## Issue
+<!--
+  Now feel free to write your issue. Please avoid vague phrases like “[…] doesn’t work”.
+  Be descriptive! Thanks again 🙌 ❤️
+-->
+
+
+
+**Platform**
+<details>
+<summary>Click to expand</summary>
+
+## Platform
+
 <!--
   Once the above boxes are checked, if you are able to fill in the following list
   with your information, it would be very helpful for maintainers.
@@ -32,9 +48,4 @@ assignees: ''
 - **Link to your site**: <!-- If available, replace with link to your site -->
 - **Link to your source**: <!-- If available, replace with link to relevant source repository -->
 - **Link to a [Gist](https://gist.github.com/) with the contents of your settings file**: <!-- If your source is not accessible, put Gist link here -->
-
-## Issue
-<!--
-  Now feel free to write your issue. Please avoid vague phrases like “[…] doesn’t work”.
-  Be descriptive! Thanks again 🙌 ❤️
--->
+</detail>
