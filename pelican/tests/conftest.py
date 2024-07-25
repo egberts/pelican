@@ -14,6 +14,17 @@ import filelock
 import pytest
 
 
+@pytest.fixture(scope="function", autouse=True)
+def test_log(request):
+    # Here logging is used, you can use whatever you want to use for logs
+    logging.info(f"Test '{request.node.nodeid}' STARTED")
+
+    def fin():
+        logging.info(f"Test '{request.node.nodeid}' COMPLETED")
+
+    request.addfinalizer(fin)
+
+
 @pytest.fixture(scope="session")
 def locale_to_c__fixture_session():
     """Load/unload the "C" locale"""
@@ -78,8 +89,8 @@ def assert_module_integrity__fixture_session(serialize_sys_modules__fixture_sess
     yield
     if not (saved_sys_modules == sys.modules):
         raise AssertionError(f"Entire {__file__} failed to preserve sys.modules.")
-    else:
-        logging.debug("all modules accounted for in sys.modules[].")
+    # else:
+    #    logging.debug("all modules accounted for in sys.modules[].")
 
 
 @pytest.fixture(scope="session")
