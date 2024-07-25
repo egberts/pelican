@@ -260,7 +260,26 @@ class TestLogLimitPattern(unittest.TestCase):
             self.assertEqual(10, self.handler.count_logs(level=logging.WARNING))
             self.assertEqual(11, self.handler.count_logs())
 
-    def test_template_digit(self):
+    def test_template_digit_one(self):
+        """Filter by digit template"""
+        self.logger.setLevel(logging.WARNING)  # presumptive default level
+
+        with self.reset_logger():
+            # This pattern ignores out everything that starts with `Log `
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+
+            do_logging(self)
+
+            self.assertEqual(0, self.handler.count_logs(r"Log \\d", logging.WARNING))
+            self.assertEqual(
+                5, self.handler.count_logs(r"Another log \d", logging.WARNING)
+            )
+            # total log buffer dataset check
+            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
+            self.assertEqual(9, self.handler.count_logs(level=logging.WARNING))
+            self.assertEqual(10, self.handler.count_logs())
+
+    def test_template_digit_all(self):
         """Filter by digit template"""
         self.logger.setLevel(logging.WARNING)  # presumptive default level
 
@@ -270,7 +289,7 @@ class TestLogLimitPattern(unittest.TestCase):
 
             do_logging(self)
 
-            self.assertEqual(0, self.handler.count_logs("Log \\d", logging.WARNING))
+            self.assertEqual(0, self.handler.count_logs(r"Log \\d", logging.WARNING))
             self.assertEqual(
                 5, self.handler.count_logs(r"Another log \d", logging.WARNING)
             )
@@ -302,7 +321,7 @@ class TestLogLimitPattern(unittest.TestCase):
             self.assertEqual(5, self.handler.count_logs())
 
 
-class TestLogLimitPatternLevel(unittest.TestCase):
+class TestLogLimitPatternInfoLevel(unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.logger = logging.getLogger(__name__)
@@ -329,7 +348,7 @@ class TestLogLimitPatternLevel(unittest.TestCase):
 
     def test_exact_pattern(self):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
+        self.logger.setLevel(logging.INFO)
 
         with self.reset_logger():
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
@@ -343,11 +362,11 @@ class TestLogLimitPatternLevel(unittest.TestCase):
             # total log buffer dataset check
             self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
             self.assertEqual(9, self.handler.count_logs(level=logging.WARNING))
-            self.assertEqual(10, self.handler.count_logs())
+            self.assertEqual(11, self.handler.count_logs())
 
     def test_template_word(self):
         """Filter by word template"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
+        self.logger.setLevel(logging.INFO)
 
         with self.reset_logger():
             # This pattern ignores out everything that has a word before ' log '
@@ -362,11 +381,11 @@ class TestLogLimitPatternLevel(unittest.TestCase):
             # total log buffer dataset check
             self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
             self.assertEqual(10, self.handler.count_logs(level=logging.WARNING))
-            self.assertEqual(11, self.handler.count_logs())
+            self.assertEqual(12, self.handler.count_logs())
 
     def test_template_digit(self):
         """Filter by digit template"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
+        self.logger.setLevel(logging.INFO)
 
         with self.reset_logger():
             # This pattern ignores out everything that starts with `Log `
@@ -381,11 +400,11 @@ class TestLogLimitPatternLevel(unittest.TestCase):
             # total log buffer dataset check
             self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
             self.assertEqual(10, self.handler.count_logs(level=logging.WARNING))
-            self.assertEqual(11, self.handler.count_logs())
+            self.assertEqual(12, self.handler.count_logs())
 
     def test_both_template_and_exact_pattern(self):
         """Filter, using all attributes"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
+        self.logger.setLevel(logging.INFO)  # presumptive default level
 
         with self.reset_logger():
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
@@ -399,8 +418,112 @@ class TestLogLimitPatternLevel(unittest.TestCase):
             )
             # total log buffer dataset check
             self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(0, self.handler.count_logs(level=logging.INFO))
+            self.assertEqual(1, self.handler.count_logs(level=logging.INFO))
             self.assertEqual(4, self.handler.count_logs(level=logging.WARNING))
             self.assertEqual(0, self.handler.count_logs(level=logging.ERROR))
             self.assertEqual(1, self.handler.count_logs(level=logging.CRITICAL))
-            self.assertEqual(5, self.handler.count_logs())
+            self.assertEqual(6, self.handler.count_logs())
+
+
+class TestLogLimitPatternDebugLevel(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.logger = logging.getLogger(__name__)
+        self.handler = LogCountHandler()
+        self.logger.addHandler(self.handler)
+        # Check level of nested logHandlers/logFilters
+        # We do not want negotiated getEffectiveLevel() here
+        self.original_log_level = self.logger.level
+        # This level should be 0 (logging.NOTSET); crap out if otherwise
+        self.assertEqual(0, self.original_log_level, "log level is no longer NOTSET.")
+
+    def tearDown(self):
+        _reset_limit_filter()
+        self.logger.setLevel(self.original_log_level)
+        super().tearDown()
+
+    @contextmanager
+    def reset_logger(self):
+        try:
+            yield None
+        finally:
+            _reset_limit_filter()
+            self.handler.flush()
+
+    def test_exact_pattern(self):
+        """Filter by exact pattern"""
+        self.logger.setLevel(logging.DEBUG)
+
+        with self.reset_logger():
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+
+            do_logging(self)
+
+            self.assertEqual(0, self.handler.count_logs(r"Log 3", logging.WARNING))
+            self.assertEqual(
+                5, self.handler.count_logs("Another log \\d", logging.WARNING)
+            )
+            # total log buffer dataset check
+            self.assertEqual(1, self.handler.count_logs(level=logging.DEBUG))
+            self.assertEqual(9, self.handler.count_logs(level=logging.WARNING))
+            self.assertEqual(12, self.handler.count_logs())
+
+    def test_template_word(self):
+        """Filter by word template"""
+        self.logger.setLevel(logging.DEBUG)
+
+        with self.reset_logger():
+            # This pattern ignores out everything that has a word before ' log '
+            log.LimitFilter._ignore.add((logging.WARNING, "\w log "))
+
+            do_logging(self)
+
+            self.assertEqual(5, self.handler.count_logs("Log \\d", logging.WARNING))
+            self.assertEqual(
+                5, self.handler.count_logs(r"Another log \d", logging.WARNING)
+            )
+            # total log buffer dataset check
+            self.assertEqual(1, self.handler.count_logs(level=logging.DEBUG))
+            self.assertEqual(10, self.handler.count_logs(level=logging.WARNING))
+            self.assertEqual(13, self.handler.count_logs())
+
+    def test_template_digit(self):
+        """Filter by digit template"""
+        self.logger.setLevel(logging.DEBUG)
+
+        with self.reset_logger():
+            # This pattern ignores out everything that starts with `Log `
+            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+
+            do_logging(self)
+
+            self.assertEqual(5, self.handler.count_logs("Log \\d", logging.WARNING))
+            self.assertEqual(
+                5, self.handler.count_logs(r"Another log \d", logging.WARNING)
+            )
+            # total log buffer dataset check
+            self.assertEqual(1, self.handler.count_logs(level=logging.DEBUG))
+            self.assertEqual(10, self.handler.count_logs(level=logging.WARNING))
+            self.assertEqual(13, self.handler.count_logs())
+
+    def test_both_template_and_exact_pattern(self):
+        """Filter, using all attributes"""
+        self.logger.setLevel(logging.DEBUG)  # presumptive default level
+
+        with self.reset_logger():
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(self)
+
+            self.assertEqual(4, self.handler.count_logs("Log \\d", logging.WARNING))
+            self.assertEqual(
+                0, self.handler.count_logs("Another log \\d", logging.WARNING)
+            )
+            # total log buffer dataset check
+            self.assertEqual(1, self.handler.count_logs(level=logging.DEBUG))
+            self.assertEqual(1, self.handler.count_logs(level=logging.INFO))
+            self.assertEqual(4, self.handler.count_logs(level=logging.WARNING))
+            self.assertEqual(0, self.handler.count_logs(level=logging.ERROR))
+            self.assertEqual(1, self.handler.count_logs(level=logging.CRITICAL))
+            self.assertEqual(7, self.handler.count_logs())
