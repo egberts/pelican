@@ -41,9 +41,9 @@ class TestLog(unittest.TestCase):
         # no filter
         with self.reset_logger():
             do_logging()
-            self.assertEqual(self.handler.count_logs("Log \\d", logging.WARNING), 5)
+            self.assertEqual(5, self.handler.count_logs("Log \\d", logging.WARNING))
             self.assertEqual(
-                self.handler.count_logs("Another log \\d", logging.WARNING), 5
+                5, self.handler.count_logs("Another log \\d", logging.WARNING)
             )
 
         # filter by template
