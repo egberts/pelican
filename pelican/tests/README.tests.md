@@ -222,3 +222,9 @@ mixing both test packages: the scariest thing?  An empty `conftest.py` will do a
 
 **WARNING:** pytest will register additional custom handlers to
 the root logger to be able to capture log records emitted in your code, so you can test whether your program logging behaviour is correct.
+
+
+# References #
+
+* [Why not Unittest?](https://pythontest.com/testandcode/173-why-not-unittest/)
+*
