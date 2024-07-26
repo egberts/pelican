@@ -25,6 +25,21 @@ def test_log(request):
     request.addfinalizer(fin)
 
 
+@pytest.fixture(scope="function", autouse=True)
+def test_log_level_warning(request):
+    """logging level defaults to logging.WARNING"""
+    logger = logging.getLogger("conftest.py")
+    # We do not want to know "highest" setted level of the Logger chain.
+    # Therefore, do not use logger.getEstablishedLevel() here
+    original_log_level = logger.level
+
+    logger.setLevel(logging.WARNING)
+
+    yield
+
+    logger.setLevel(original_log_level)
+
+
 @pytest.fixture(scope="session")
 def locale_to_c__fixture_session():
     """Load/unload the "C" locale"""

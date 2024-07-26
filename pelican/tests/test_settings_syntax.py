@@ -36,10 +36,10 @@ PC_FILENAME_SYNTAX4_ERROR = "pelicanconf-syntax4-error"
 
 # MODNAME_ = Module name
 PC_MODNAME_DEFAULT = "pelicanconf"  # used if module_name is blank
-PC_MODNAME_INDENT1_ERROR = "pelicanconf-indent1-error"  # PyPA error: no ending digit
-PC_MODNAME_INDENT2_ERROR = "pelicanconf-indent2-error"  # PyPA error: no ending digit
-PC_MODNAME_SYNTAX3_ERROR = "pelicanconf-syntax3-error"  # PyPA error: no ending digit
-PC_MODNAME_SYNTAX4_ERROR = "pelicanconf-syntax4-error"  # PyPA error: no ending digit
+PC_MODNAME_INDENT1_ERROR = "pelicanconf_indent1_error"  # PyPA error: no ending digit
+PC_MODNAME_INDENT2_ERROR = "pelicanconf_indent2_error"  # PyPA error: no ending digit
+PC_MODNAME_SYNTAX3_ERROR = "pelicanconf_syntax3_error"  # PyPA error: no ending digit
+PC_MODNAME_SYNTAX4_ERROR = "pelicanconf_syntax4_error"  # PyPA error: no ending digit
 PC_MODNAME_SYS_BUILTIN = "calendar"
 
 # Iterators, for fixtures
@@ -319,12 +319,21 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
                 load_source(default_module, str(indent_error_file))
-            assert sample.type == IndentationError
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type == SyntaxError
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_INDENT1_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT1_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
         if expected_in_sys_modules(default_module):
@@ -356,12 +365,21 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
                 load_source(default_module, str(indent_error_file))
-            assert sample.type == IndentationError
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type == SyntaxError
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_INDENT1_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT1_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
         if expected_in_sys_modules(default_module):
@@ -393,12 +411,21 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
                 load_source(default_module, str(indent_error_file))
-            assert sample.type == IndentationError
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type == SyntaxError
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_INDENT1_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT1_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
         if expected_in_sys_modules(default_module):
@@ -430,12 +457,21 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
                 load_source(default_module, str(indent_error_file))
-            assert sample.type == IndentationError
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type == SyntaxError
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_INDENT1_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT1_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
         if expected_in_sys_modules(default_module):
@@ -450,8 +486,8 @@ class TestSettingsSyntax:
         locale_to_c__fixture_session,
     ):
         """syntax error; absolute path, str type; passing mode"""
-        default_module = PC_MODNAME_INDENT1_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_INDENT1_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: str = str(settings_data_dir / BLOB_FULLNAME_INDENT1_ERROR)
         cwd_path: Path = cwd_inside_tests_settings_dir__fixture_module
@@ -466,16 +502,25 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(default_module, str(indent_error_file))
-            assert sample.type == IndentationError
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+                load_source(bad_module, str(indent_error_file))
+            assert sample.type == SyntaxError
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_INDENT1_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT1_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         # Cleanup
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         Path(indent_error_file).unlink(missing_ok=False)
 
     def test_load_source_module_str_rel_indent2_error_fail(
@@ -503,16 +548,31 @@ class TestSettingsSyntax:
 
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
-            with pytest.raises(IndentationError) as sample:
+            with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
                 load_source(indent_error_module, path=str(indent_error_file))
 
-            assert sample.type == IndentationError
-            assert sample.value.lineno == SM_UT_SYNTAX_INDENT2_LINENO
-            assert sample.value.offset == SM_UT_SYNTAX_INDENT2_OFFSET
-        # Would be nice if a STDERR says something to end-user WHERE
-        # the syntax err is  # TODO Issue #09005
-        # assert "unexpected indent" in self._caplog.text
+            assert SyntaxError == sample.type
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert sample.value.offset is not None
+            assert sample.value.args[1] == (
+                str(indent_error_file),
+                5,
+                1,
+                " // put some C code in it\n",
+                5,
+                -1,
+            )
+            assert SM_UT_SYNTAX_INDENT2_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_INDENT2_OFFSET == sample.value.offset
+            assert "unexpected indent" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "unexpected indent" in self._caplog.text
 
         if expected_in_sys_modules(indent_error_module):
             del sys.modules[indent_error_module]
@@ -548,10 +608,17 @@ class TestSettingsSyntax:
                 # ignore return value due to sys.exit()
                 load_source(name=syntax3_module, path=str(syntax_error_file))
             assert sample.type == SyntaxError
-        assert sample.value.lineno == SM_UT_SYNTAX_ERROR3_LINENO
-        assert sample.value.offset == SM_UT_SYNTAX_ERROR3_OFFSET
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert sample.value.lineno == SM_UT_SYNTAX_ERROR3_LINENO
+            assert sample.value.offset == SM_UT_SYNTAX_ERROR3_OFFSET
+            assert "closing parenthesis" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "closing parenthesis" in self._caplog.text
 
         if expected_in_sys_modules(syntax3_module):
             del sys.modules[syntax3_module]
@@ -585,10 +652,17 @@ class TestSettingsSyntax:
                 load_source(default_module, str(syntax_error_file))
 
             assert sample.type == SyntaxError
-            assert sample.value.lineno == SM_UT_SYNTAX_ERROR4_LINENO
-            assert sample.value.offset == SM_UT_SYNTAX_ERROR4_OFFSET
-        # TODO Issue #09005 - say something to the end-user exactly where syntax err is
-        # assert "unexpected indent" in self._caplog.text
+            assert sample.type.lineno is not None
+            assert sample.type.offset is not None
+            assert sample.value.lineno is not None
+            assert sample.value.offset is not None
+            assert isinstance(sample.value.lineno, int)
+            assert isinstance(sample.value.offset, int)
+            assert SM_UT_SYNTAX_ERROR4_LINENO == sample.value.lineno
+            assert SM_UT_SYNTAX_ERROR4_OFFSET == sample.value.offset
+            assert "invalid syntax" in str(sample.value)
+        # ensures that end-user can see the error message
+        assert "invalid syntax" in self._caplog.text
 
         # Cleanup temporary
         if expected_in_sys_modules(default_module):

@@ -237,6 +237,12 @@ def validate_module_name(module_name: str) -> bool:
             "or underscore ('_')."
         )
         return False
+    if "__" in module_name:
+        logger.error(
+            f"Module {module_name} name must not have two or more "
+            "contiguous underscores"
+        )
+        return False
     return True
 
 
@@ -402,6 +408,8 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         # Valid file type and valid file_path
         if guess_my_module_name:
             possible_module_name = file_path.stem
+        else:
+            possible_module_name = name
     else:  # path is neither a file nor a directory
         err_msg = f"File {file_path} is not a file nor a directory."
         logger.error(err_msg)
@@ -495,25 +503,20 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         # IndentationError, TabError are also subclass of SyntaxError
         # Other non-runtime exceptions that are not handled herre are:
         # SystemError and MemoryError.
+        # e[0] is actual str of a terse error message
+        # e[1] is a tuple of 6 items:
+        #      filespec, lineno, offset, offending_line, end.lineno, end.offset
+        enhanced_syntax_line = (
+            f"Syntax Error: {e.args[0]} at line {e.lineno} column {e.offset}."
+        )
         # Show where in the pelicanconf.py the offending syntax error is at via {e}.
         logger.error(
             f"{e}.\nHINT: "
             f"Try executing `python {resolved_absolute_filespec}` "
             f"for better syntax troubleshooting."
         )
-        # reraise the exception up but with even more details
-        raise SyntaxError(
-            f"Invalid syntax error at line number {e.lineno}"
-            f" column offset {e.offset}",
-            {
-                "filename": resolved_absolute_filespec,
-                "lineno": int(e.lineno),
-                "offset": int(e.offset),
-                "text": e.text,
-                # "end_lineno": int(e.end_lineno),  # Python 3.10
-                # "end_offset": int(e.end_offset),  # Python 3.10
-            },
-        ) from e
+        # reraise the exception up but with even more detailsA
+        raise SyntaxError(enhanced_syntax_line, e.args[1]) from e
     except Any as e:
         logger.critical(
             f"'Python system module loader for {resolved_absolute_filespec}'"
