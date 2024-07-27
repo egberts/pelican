@@ -13,9 +13,12 @@ class TestLog(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
         self.handler = LogCountHandler()
         self.logger.addHandler(self.handler)
+        self.original_log_level = self.logger.level
+        self.logger.setLevel(logging.WARNING)
 
     def tearDown(self):
         self._reset_limit_filter()
+        self.logger.setLevel(self.original_log_level)
         super().tearDown()
 
     def _reset_limit_filter(self):
