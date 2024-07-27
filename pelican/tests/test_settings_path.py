@@ -323,3 +323,6 @@ if __name__ == "__main__":
     # more, complex variants of pytest.
     # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
     # pytest.main([__file__, "-n0"])  # single-process, single-thread
+
+# Python: Minimum required versions: 3.6  (vermin v1.6.0)
+# Python: Incompatible versions:     2

@@ -1,9 +1,6 @@
 #
 #  Focus on settings.py/load_source() only
 
-# Minimum version: Python 3.6 (tempfile.mkdtemp())
-# Minimum version: Pytest 4.0, Python 3.8+
-
 import contextlib
 import copy
 import errno
@@ -133,6 +130,8 @@ if PC_MODNAME_DEFAULT in sys.modules:
         " this test is aborted",
     )
 
+# print(sys.executable)
+# print("\n".join(sys.path))
 
 ##########################################################################
 #  Fixtures, at session-scope and module-scope
@@ -1044,3 +1043,6 @@ if __name__ == "__main__":
     # more, complex variants of pytest.
     # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
     # pytest.main([__file__, "-n0"])  # single-process, single-thread
+
+# Python: Minimum required versions: 3.8  (vermin v1.6.0)
+# Python: Incompatible versions:     2

@@ -66,3 +66,6 @@ class TestSettingsCanonNormalize:
         expected_modname = "snake_case_makes_a_great_case"
 
         assert expected_modname == canonicalize_module_name(funky_modname)
+
+
+# Python: Minimum required versions: 2.3, 3.0  (vermin v1.6.0)

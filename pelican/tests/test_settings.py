@@ -158,3 +158,7 @@ class TestSettingsConfiguration(unittest.TestCase):
             expected = option % "qux"
             found = result.format(slug="qux")
             self.assertEqual(expected, found)
+
+
+# Python: Minimum required versions: 3.6  (vermin v1.6.0)
+# Python: Incompatible versions:     2

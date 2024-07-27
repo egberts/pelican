@@ -1,9 +1,6 @@
 #
 #  Focused on settings.py/load_source(), specifically syntax error handling
 #
-# Minimum version: Python 3.8
-# Minimum version: Pytest 4.0, Python 3.8+
-#
 # To see collection/ordering of a fixture for a specific function, execute:
 #
 #  pytest -n0 --setup-plan \
@@ -302,8 +299,8 @@ class TestSettingsSyntax:
         locale_to_c__fixture_session,
     ):
         """syntax error; absolute path, str type; passing mode"""
-        default_module = PC_MODNAME_INDENT1_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_INDENT1_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir: Path = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_INDENT1_ERROR
         tmp_dir_abs_path: Path = cwd_inside_tempdir__fixture_func
@@ -321,7 +318,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(default_module, str(indent_error_file))
+                load_source(bad_module, str(indent_error_file))
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
             assert sample.type.offset is not None
@@ -336,8 +333,8 @@ class TestSettingsSyntax:
         assert "unexpected indent" in self._caplog.text
 
         # Cleanup
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         indent_error_file.unlink(missing_ok=False)
 
     def test_load_source_module_str_abs_indent1_error_pkg_dir_fail(
@@ -348,8 +345,8 @@ class TestSettingsSyntax:
         locale_to_c__fixture_session,
     ):
         """yntax error; absolute path, str type; passing mode"""
-        default_module = PC_MODNAME_INDENT1_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_INDENT1_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir: Path = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_INDENT1_ERROR
         cwd_path: Path = cwd_inside_pelican_package_dir__fixture_module
@@ -367,7 +364,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(default_module, str(indent_error_file))
+                load_source(bad_module, str(indent_error_file))
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
             assert sample.type.offset is not None
@@ -382,8 +379,8 @@ class TestSettingsSyntax:
         assert "unexpected indent" in self._caplog.text
 
         # Cleanup
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         indent_error_file.unlink(missing_ok=False)
 
     def test_load_source_module_str_abs_indent1_error_src_dir_fail(
@@ -394,8 +391,8 @@ class TestSettingsSyntax:
         locale_to_c__fixture_session,
     ):
         """syntax error; absolute path, str type; passing mode"""
-        default_module = PC_MODNAME_INDENT1_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_INDENT1_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_INDENT1_ERROR
         cwd_path: Path = cwd_inside_pelican_source_dir__fixture_module
@@ -413,7 +410,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(default_module, str(indent_error_file))
+                load_source(bad_module, str(indent_error_file))
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
             assert sample.type.offset is not None
@@ -428,8 +425,8 @@ class TestSettingsSyntax:
         assert "unexpected indent" in self._caplog.text
 
         # Cleanup
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         indent_error_file.unlink(missing_ok=False)
 
     def test_load_source_module_str_abs_indent1_error_tests_dir_fail(
@@ -440,8 +437,8 @@ class TestSettingsSyntax:
         locale_to_c__fixture_session,
     ):
         """syntax error; absolute path, str type; passing mode"""
-        default_module = PC_MODNAME_INDENT1_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_INDENT1_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_INDENT1_ERROR
         cwd_path: Path = cwd_inside_tests_dir__fixture_module
@@ -450,7 +447,7 @@ class TestSettingsSyntax:
         if indent_error_file.exists():
             # Bad test setup, assert out
             raise AssertionError(
-                f"File {indent_error_file} should not exist in tempdir."
+                f"File {indent_error_file!s} should not exist in tempdir."
             )
         # Copy mangled pseudo-Python file into temporary absolute area as a Python file
         shutil.copyfile(blob, indent_error_file)
@@ -459,7 +456,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(default_module, str(indent_error_file))
+                load_source(bad_module, str(indent_error_file))
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
             assert sample.type.offset is not None
@@ -474,8 +471,8 @@ class TestSettingsSyntax:
         assert "unexpected indent" in self._caplog.text
 
         # Cleanup
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         indent_error_file.unlink(missing_ok=False)
 
     def test_load_source_module_str_abs_indent1_error_tests_settings_dir_fail(
@@ -494,6 +491,7 @@ class TestSettingsSyntax:
         indent_error_file: Path = cwd_path / PC_FULLNAME_INDENT1_ERROR
         # despite tempdir, check if file does NOT exist
         if indent_error_file.exists():
+            # Bad test setup, assert out
             raise AssertionError(
                 f"File {indent_error_file!s} should not exist in tempdir."
             )
@@ -532,14 +530,15 @@ class TestSettingsSyntax:
     ):
         """syntax error, relative path, str type; failing mode"""
         # In Pelican, module name shall always be 'pelicanconf'
-        indent_error_module = PC_MODNAME_INDENT2_ERROR
-        not_expected_in_sys_modules(indent_error_module)
+        bad_module = PC_MODNAME_INDENT2_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_INDENT2_ERROR
         temp_dir: Path = cwd_inside_tempdir__fixture_func
         indent_error_file: Path = temp_dir / PC_FULLNAME_INDENT2_ERROR
         # despite tempdir, check if file does NOT exist
         if indent_error_file.exists():
+            # Bad test setup, assert out
             raise AssertionError(
                 f"File {indent_error_file!s} should not exist in tempdir."
             )
@@ -550,7 +549,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(indent_error_module, path=str(indent_error_file))
+                load_source(bad_module, path=str(indent_error_file))
 
             assert SyntaxError == sample.type
             assert sample.type.lineno is not None
@@ -574,9 +573,9 @@ class TestSettingsSyntax:
         # ensures that end-user can see the error message
         assert "unexpected indent" in self._caplog.text
 
-        if expected_in_sys_modules(indent_error_module):
-            del sys.modules[indent_error_module]
-        not_expected_in_sys_modules(indent_error_module)
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
+        not_expected_in_sys_modules(bad_module)
         indent_error_file.unlink(missing_ok=False)
 
     def test_load_source_module_path_rel_syntax3_error_fail(
@@ -588,8 +587,8 @@ class TestSettingsSyntax:
     ):
         """Syntax error; valid relative file, Path type; valid module; passing mode"""
         # In Pelican, module name shall always be 'pelicanconf'
-        syntax3_module = PC_MODNAME_SYNTAX3_ERROR
-        not_expected_in_sys_modules(syntax3_module)
+        bad_module = PC_MODNAME_SYNTAX3_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_SYNTAX3_ERROR
         cwd_path: Path = cwd_inside_tempdir__fixture_func
@@ -606,7 +605,7 @@ class TestSettingsSyntax:
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
                 # ignore return value due to sys.exit()
-                load_source(name=syntax3_module, path=str(syntax_error_file))
+                load_source(name=bad_module, path=str(syntax_error_file))
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
             assert sample.type.offset is not None
@@ -620,8 +619,8 @@ class TestSettingsSyntax:
         # ensures that end-user can see the error message
         assert "closing parenthesis" in self._caplog.text
 
-        if expected_in_sys_modules(syntax3_module):
-            del sys.modules[syntax3_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         syntax_error_file.unlink(missing_ok=True)
 
     def test_load_source_module_path_abs_syntax4_error_fail(
@@ -633,13 +632,14 @@ class TestSettingsSyntax:
     ):
         """Syntax error; valid absolute file, Path type; valid module; passing mode"""
         # In Pelican, module name shall always be 'pelicanconf'
-        default_module = PC_MODNAME_SYNTAX4_ERROR
-        not_expected_in_sys_modules(default_module)
+        bad_module = PC_MODNAME_SYNTAX4_ERROR
+        not_expected_in_sys_modules(bad_module)
         settings_data_dir = get_tests_settings_dir__fixture_session
         blob: Path = settings_data_dir / BLOB_FULLNAME_SYNTAX4_ERROR
         cwd_path: Path = cwd_inside_tempdir__fixture_func
         syntax_error_file: Path = cwd_path / PC_FULLNAME_SYNTAX4_ERROR
         if syntax_error_file.exists():
+            # Bad test setup, assert out
             raise AssertionError(
                 f"File {syntax_error_file!s} should not exist in tempdir."
             )
@@ -649,7 +649,7 @@ class TestSettingsSyntax:
         with self._caplog.at_level(logging.DEBUG):
             self._caplog.clear()
             with pytest.raises(SyntaxError) as sample:
-                load_source(default_module, str(syntax_error_file))
+                load_source(bad_module, str(syntax_error_file))
 
             assert sample.type == SyntaxError
             assert sample.type.lineno is not None
@@ -665,8 +665,8 @@ class TestSettingsSyntax:
         assert "invalid syntax" in self._caplog.text
 
         # Cleanup temporary
-        if expected_in_sys_modules(default_module):
-            del sys.modules[default_module]
+        if expected_in_sys_modules(bad_module):
+            del sys.modules[bad_module]
         syntax_error_file.unlink(missing_ok=False)
 
 
@@ -678,3 +678,6 @@ if __name__ == "__main__":
     # more, complex variants of pytest.
     # pytest.main([__file__, "-n0", "-rAw", "--capture=no", "--no-header"])
     # pytest.main([__file__, "-n0"])  # single-process, single-thread
+
+# Python: Minimum required versions: 3.8  (vermin v1.6.0)
+# Python: Incompatible versions:     2
