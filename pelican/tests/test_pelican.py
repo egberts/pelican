@@ -65,6 +65,8 @@ class TestPelican(LoggedTestCase):
         rmtree(self.temp_path)
         rmtree(self.temp_cache)
         locale.setlocale(locale.LC_ALL, self.old_locale)
+        if "pelicanconf" in sys.modules:
+            del sys.modules["pelicanconf"]
         super().tearDown()
 
     def assertDirsEqual(self, left_path, right_path, msg=None):
