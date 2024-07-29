@@ -45,6 +45,7 @@ import json
 import logging
 import multiprocessing
 import os
+import pathlib
 import pprint
 import sys
 import time
@@ -73,7 +74,7 @@ from pelican.generators import (
 from pelican.plugins import signals
 from pelican.plugins._utils import get_plugin_name, load_plugins
 from pelican.server import ComplexHTTPRequestHandler, RootedHTTPServer
-from pelican.settings import read_settings
+from pelican.settings import Settings, read_settings
 from pelican.utils import clean_output_dir, maybe_pluralize, wait_for_changes
 from pelican.writers import Writer
 
@@ -87,7 +88,7 @@ logger = logging.getLogger(__name__)
 
 
 class Pelican:
-    def __init__(self, settings):
+    def __init__(self, settings: Settings):
         """Pelican initialization
 
         Performs the following steps:
@@ -106,7 +107,7 @@ class Pelican:
         :type self: Settings
         """
         # define the default settings
-        self.settings = settings
+        self.settings: Settings = settings
 
         self.path = settings["PATH"]
         self.theme = settings["THEME"]
@@ -130,7 +131,7 @@ class Pelican:
             sys.path.insert(0, "")
 
     def init_plugins(self):
-        """Add all desired plugins, then initialize each
+        """Add all desired plugins, then initialize each plugins
 
         :param self: implicit Pelican class scope
         :type self: class
@@ -189,7 +190,7 @@ class Pelican:
         """
         start_time = time.time()
 
-        context = self.settings.copy()
+        context: Settings = self.settings.copy()
         # Share these among all the generators and content objects
         # They map source paths to Content objects or None
         context["generated_content"] = {}
@@ -289,7 +290,10 @@ class Pelican:
         )
 
         console.print(
-            f"Done: Processed {pluralized_articles}, {pluralized_drafts}, {pluralized_hidden_articles}, {pluralized_pages}, {pluralized_hidden_pages} and {pluralized_draft_pages} in {time.time() - start_time:.2f} seconds."
+            f"Done: Processed {pluralized_articles}, {pluralized_drafts}, "
+            f"{pluralized_hidden_articles}, {pluralized_pages}, "
+            f"{pluralized_hidden_pages} and {pluralized_draft_pages} in "
+            f"{time.time() - start_time:.2f} seconds."
         )
 
     def _get_generator_classes(self):
@@ -382,7 +386,7 @@ class PrintSettings(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string):
         """
-        Get a list of "approved" writer
+        Print out "used" settings
 
         :param self: implicit PrintingSettings class scope
         :type self: class
@@ -748,9 +752,19 @@ def get_instance(args):
     """
     config_settings_file = args.settings
     if config_settings_file is None:
-        if os.path.isfile(DEFAULT_CONFIG_NAME):
-            config_settings_file = DEFAULT_CONFIG_NAME  # relative path to $CWD
-            args.settings = DEFAULT_CONFIG_NAME  # relative path to $CWD
+        if pathlib.Path(DEFAULT_CONFIG_NAME).exists():
+            if pathlib.Path(DEFAULT_CONFIG_NAME).is_file():
+                if os.access(DEFAULT_CONFIG_NAME, os.R_OK):
+                    config_settings_file = DEFAULT_CONFIG_NAME  # relative path to $CWD
+                    args.settings = DEFAULT_CONFIG_NAME  # relative path to $CWD
+                else:
+                    err_msg = f"Configuration {config_settings_file} is not readable."
+                    logger.error(err_msg)
+                    raise PermissionError(err_msg)
+            else:
+                err_msg = f"Configuration {config_settings_file} is not a file."
+            logger.error(err_msg)
+            raise FileNotFoundError(err_msg)
         else:
             err_msg = f"Configuration {config_settings_file} file is not found."
             logger.error(err_msg)
