@@ -1,6 +1,6 @@
 import logging
 import pytest
-import unittest
+import re
 from collections import defaultdict
 from contextlib import contextmanager
 
@@ -56,23 +56,23 @@ EXPECTED_TOTAL_LOG = (
 )
 
 
-def do_logging(self):
+def do_logging(test_logger):
     """Populate log content"""
     for i in range(EXPECTED_CRITICAL_ITER):
-        self.logger.critical("A pseudo message of 'we are crashing'")
+        test_logger.critical("A pseudo message of 'we are crashing'")
 
     for i in range(EXPECTED_INFO_ITER):
-        self.logger.info("Unit testing log")
+        test_logger.info("Unit testing log")
     for i in range(EXPECTED_WARNING_ITER):
-        self.logger.warning("Log %s", i)
-        self.logger.warning(
+        test_logger.warning("Log %s", i)
+        test_logger.warning(
             f"Another log {i!s}",
             extra={'limit_msg': 'A generic message for too many warnings'}
         )
     for i in range(EXPECTED_ERROR_ITER):
-        self.logger.error("Flooding error repeating")
+        test_logger.error("Flooding error repeating")
     for i in range(EXPECTED_DEBUG_ITER):
-        self.logger.debug("Unit testing Log @ debug level")
+        test_logger.debug("Unit testing Log @ debug level")
 
 
 def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
@@ -117,772 +117,1484 @@ def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
     return this_logger.manager.root
 
 
-class TestLogBasic(unittest.TestCase):
+def restore_root_logger_to_python() -> logging.RootLogger.__class__:
+    # Python logging does root-reset as:
+    #    root = RootLogger(WARNING)
+    #    Logger.root = root
+    #    Logger.manager = Manager(Logger.root)
+
+    # But there is no way to save the manager, just to create a new Manager()
+    # But there is no way to save the handlers, just to create a new Handlers()
+    previous_logger_subclass = logging.getLoggerClass()
+    # Need to ascertain that root is literally a RootLogger
+    # and not a subclass of any
+    assert previous_logger_subclass.__subclasses__() == []
+    # previous_manager = logging.Manager(logging.Logger.root)
+    a_root_logger_class = logging.getLoggerClass().root.__class__
+    assert issubclass(previous_logger_subclass, previous_logger_subclass)
+    native_root_logger_class = logging.RootLogger
+
+    logging.setLoggerClass(native_root_logger_class)
+    # force Rootlogger to be of our preferred class for future instantiation
+    # Undo Pelican's forced FatalLogger root class
+    logging.getLogger().__class__ = native_root_logger_class
+
+    # Blow away all the 38+ loggers outside of Pelican
+    logging.root.manager.loggerDict = {}
+    logging.root.level = None  # This is the signature virgin RootLogger
+    return a_root_logger_class
+
+
+##########################################################################
+#  Fixtures
+##########################################################################
+@pytest.fixture(scope="function")
+def display_attributes_around_python_root_logger__fixture_func():
+    # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
+    print_logger("root (before)", logging.root)
+    yield
+    print_logger("root (after)", logging.root)
+
+
+@pytest.fixture(scope="function")
+def reset_root_logger_to_python__fixture_func():
+    """Undo any custom RootLogger"""
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def display_reset_root_logger_to_python__fixture_func(
+    display_attributes_around_python_root_logger__fixture_func
+):
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def new_test_logger(
+    reset_root_logger_to_python__fixture_func
+):
+    # At this point, it is a virgin Python CLI startup,
+    # right after loading the logging module
+    try:
+        logging.getLogger("any_name_should_fail")
+        raise AssertionError("Not a clean empty Logger")
+    except ValueError:
+        # Correct error for an unused Logger
+        test_logger = logging.getLogger()
+
+    yield test_logger
+
+
+class TestLogBasic:
     """Basic Log Test"""
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
 
-    def setUp(self):
-        super().setUp()
-        self.logger = logging.getLogger(__name__)
-        logging.basicConfig(level=logging.DEBUG)
-        print("logging.getLoggerClass(): ", logging.getLoggerClass())
-        print("logging.getLogRecordFactory(): ", logging.getLogRecordFactory())
-        self.assertEqual(logging.WARNING, self.logger.getEffectiveLevel())
-        self.assertEqual(logging.NOTSET, self.logger.level)
-        # Add a custom counter of log output
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        self.logger.setLevel(logging.NOTSET)
-        self.assertEqual(logging.NOTSET, self.handler.level)
-        self.assertEqual(
-            logging.WARNING,
-            self.logger.getEffectiveLevel(),
-            "log level is no longer effective level.",
-        )
-
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        dump_log(self.logger)
-
-    def tearDown(self):
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
-
-    @contextmanager
-    def reset_logger(self):
-        try:
-            yield None
-        finally:
-            _reset_limit_filter()
-            self.handler.flush()
-
-    def test_one_log_output(self):
+    def test_one_log_output(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """One count of log messages"""
-        with self.reset_logger():
-            self.logger.setLevel(1)
-            info_log_count = 1
+        test_log = new_test_logger
+        test_log.setLevel(1)
+        expected_count = 1
+        pattern_str = "Unit testing log"
+        with self._caplog.at_level(logging.INFO):
+            self._caplog.clear()
+            for i in range(expected_count):
+                test_log.info(pattern_str)
+            actual_count = 0
 
-            for i in range(info_log_count):
-                self.logger.info("Unit testing Log")
+            for rec in self._caplog.messages:
+                if pattern_str == rec:
+                    actual_count = actual_count + 1
 
-            # all log contents are in self.handler.buffer[]
-            self.assertEqual(info_log_count, self.handler.count_logs())
+            assert expected_count == actual_count
 
-    def test_flood_log_output(self):
+    def test_flood_log_output(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+
+    ):
         """Basic count of log messages"""
-        flood_count = 825
-        with self.reset_logger():
-            target_level = 1
-            self.logger.setLevel(target_level)
+        target_level = 1
+        expected_count = 825
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(logging.INFO):
+            self._caplog.clear()
+            for i in range(expected_count):
+                test_log.info(f"Log {i}")
 
-            for i in range(flood_count):
-                self.logger.info(f"Log {i}")
+        actual_count = 0
+        for rec in self._caplog.messages:
+            if "Log " in rec:
+                actual_count = actual_count + 1
 
-            self.assertEqual(flood_count, self.handler.count_logs())
-            self.assertEqual(target_level, self.logger.level)
-            self.assertEqual(logging.NOTSET, self.handler.level)
-            self.assertEqual(target_level, self.logger.getEffectiveLevel())
+        assert target_level == test_log.level
+        assert target_level == test_log.getEffectiveLevel()
+        assert expected_count == actual_count
 
-    def test_flood_mixed_log_output(self):
+    def test_flood_mixed_log_output(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Basic count of log messages"""
-        flood_count = 100
-        with self.reset_logger():
-            self.logger.setLevel(1)
+        target_level = 1
+        expected_count = 100
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-            for i in range(flood_count):
-                self.logger.debug(f"Log {i}")
-                self.logger.info(f"Log {i}")
-                self.logger.warning(f"Log {i}")
-                self.logger.error(f"Log {i}")
-                self.logger.critical(f"Log {i}")
+            for i in range(expected_count):
+                test_log.debug(f"Log {i}")
+                test_log.info(f"Log {i}")
+                test_log.warning(f"Log {i}")
+                test_log.error(f"Log {i}")
+                test_log.critical(f"Log {i}")
 
-            self.assertEqual(flood_count * 5, self.handler.count_logs())
+            actual_count = 0
+            for rec in self._caplog.messages:
+                if "Log " in rec:
+                    actual_count = actual_count + 1
+            assert (expected_count * 5) == actual_count
 
 
-class TestLogLevel(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
-        self.logger = logging.getLogger(__name__)
-        dump_log(self.logger)
-        dump_log(self.logger)
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        dump_log(self.handler)
-        # Check level of nested logHandlers/logFilters
-        # We do not want negotiated getEffectiveLevel() here
-        self.assertEqual(self.logger.level, logging.NOTSET)
-        self.assertEqual(self.handler.level, logging.NOTSET)
+class TestLogLevel:
 
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        self.assertEqual(0, self.original_log_level, "log level is no longer NOTSET.")
+    def count_logs(self, msg=None, level=None):
+        count = 0
+        for logger_name, log_lvl, log_msg in self._caplog.record_tuples[:]:
+            if (
+                (msg is None or re.match(msg, log_msg)) and
+                (level is None or log_lvl == level)
+            ):
+                print(f'name: {logger_name} lvl: {log_lvl} msg: "{log_msg}"')
+                count = count + 1
+        return count
 
-    def tearDown(self):
-        _reset_limit_filter()
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
 
-    @contextmanager
-    def reset_logger(self):
-        try:
-            yield None
-        finally:
-            _reset_limit_filter()
-            self.handler.flush()
-            self.logger.setLevel(logging.NOTSET)
-
-    def test_below_level(self):
+    def test_below_level(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Logging below a given label level"""
-        self.logger.setLevel(logging.INFO)
+        expected_count = 0
+        target_level = logging.INFO
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-        with self.reset_logger():
-            self.logger.debug("Ignored this debug log @ INFO level")
+            test_log.debug("Ignored this debug log @ INFO level")
 
-            self.assertEqual(0, self.handler.count_logs())
+        actual_count = 0
+        for rec in self._caplog.messages:
+            if "Ignored this debug log " in rec:
+                actual_count = actual_count + 1
 
-    def test_below_level_increment(self):
+        assert actual_count == expected_count
+
+    def test_below_level_increment(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Logging under a given level + 1"""
-        self.logger.setLevel(logging.DEBUG + 1)
+        expected_count = 0
+        target_level = logging.DEBUG + 1
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-        with self.reset_logger():
-            self.logger.debug("Ignored this debug log @ slightly above DEBUG+1")
+            test_log.debug("Ignored this debug log @ slightly above DEBUG+1")
 
-            self.assertEqual(0, self.handler.count_logs())
+            actual_count = 0
+            for rec in self._caplog.messages:
+                if "Ignored this debug log " in rec:
+                    actual_count = actual_count + 1
+            assert actual_count == expected_count
 
-    def test_above_level(self):
+    def test_above_level(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Logging above given level"""
-        self.logger.setLevel(10)
-        with self.reset_logger():
-            self.logger.info("this info log appears @ DEBUG level")
+        expected_count = 1
+        target_level = logging.DEBUG
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        pattern_test = "this info log appears @ DEBUG level"
+        with self._caplog.at_level(logging.INFO):
+            self._caplog.clear()
 
-            self.assertEqual(1, self.handler.count_logs())
+            test_log.info(pattern_test)
 
-    def test_above_level_increment(self):
+            actual_count = 0
+            for rec in self._caplog.messages:
+                if pattern_test == rec:
+                    actual_count = actual_count + 1
+            assert actual_count == expected_count
+
+    def test_above_level_increment(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Logging above a given level - 1"""
-        self.logger.setLevel(logging.DEBUG - 1)
+        expected_count = 1
+        target_level = (logging.DEBUG - 1)
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        pattern_test = "this DEBUG log appears slight over DEBUG-1 level"
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-        with self.reset_logger():
-            self.logger.debug("this DEBUG log appears slight over DEBUG-1 level")
+            test_log.debug(pattern_test)
 
-            self.assertEqual(1, self.handler.count_logs())
+            actual_count = 0
+            for rec in self._caplog.messages:
+                if pattern_test == rec:
+                    actual_count = actual_count + 1
+            assert actual_count == expected_count
 
-    def test_level_segregation_at_debug(self):
+    def test_level_segregation_at_debug(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        target_level = logging.DEBUG
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            do_logging(test_log)
+
         """Each boundary of level, +/- 1"""
-        self.logger.setLevel(logging.DEBUG)
-
-        with self.reset_logger():
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs(level=0))
-            self.assertEqual(0, self.handler.count_logs(level=1))
-            self.assertEqual(0, self.handler.count_logs(level=9))
-            self.assertEqual(
-                EXPECTED_DEBUGS,
-                self.handler.count_logs(level=logging.DEBUG)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=11))
-            self.assertEqual(0, self.handler.count_logs(level=19))
-            self.assertEqual(
-                EXPECTED_INFOS,
-                self.handler.count_logs(level=logging.INFO)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=21))
-            self.assertEqual(0, self.handler.count_logs(level=29))
-            self.assertEqual(
-                EXPECTED_WARNINGS_LIMIT + WARNING_LIMIT_EMITTED,
-                self.handler.count_logs(level=logging.WARNING)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=31))
-            self.assertEqual(0, self.handler.count_logs(level=39))
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=41))
-            self.assertEqual(0, self.handler.count_logs(level=49))
-            self.assertEqual(
-                EXPECTED_CRITICALS,
-                self.handler.count_logs(level=logging.CRITICAL)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=51))
-
-    def test_level_segregation_at_info(self):
-        """Each boundary of level, +/- 1"""
-        self.logger.setLevel(logging.INFO)
-
-        with self.reset_logger():
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs(level=0))
-            self.assertEqual(0, self.handler.count_logs(level=1))
-            self.assertEqual(0, self.handler.count_logs(level=9))
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(0, self.handler.count_logs(level=11))
-            self.assertEqual(0, self.handler.count_logs(level=19))
-            self.assertEqual(
-                EXPECTED_INFOS,
-                self.handler.count_logs(level=logging.INFO)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=21))
-            self.assertEqual(0, self.handler.count_logs(level=29))
-            self.assertEqual(
-                EXPECTED_WARNINGS_LIMIT + WARNING_LIMIT_EMITTED,
-                self.handler.count_logs(level=logging.WARNING)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=31))
-            self.assertEqual(0, self.handler.count_logs(level=39))
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=41))
-            self.assertEqual(0, self.handler.count_logs(level=49))
-            self.assertEqual(
-                EXPECTED_CRITICALS,
-                self.handler.count_logs(level=logging.CRITICAL)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=51))
-
-    def test_level_segregation_at_warning(self):
-        """Each boundary of level, +/- 1"""
-        self.logger.setLevel(logging.WARNING)
-
-        with self.reset_logger():
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs(level=0))
-            self.assertEqual(0, self.handler.count_logs(level=1))
-            self.assertEqual(0, self.handler.count_logs(level=9))
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(0, self.handler.count_logs(level=11))
-            self.assertEqual(0, self.handler.count_logs(level=19))
-            self.assertEqual(0, self.handler.count_logs(level=logging.INFO))
-            self.assertEqual(0, self.handler.count_logs(level=21))
-            self.assertEqual(0, self.handler.count_logs(level=29))
-            self.assertEqual(
-                EXPECTED_WARNINGS_LIMIT + WARNING_LIMIT_EMITTED,
-                self.handler.count_logs(level=logging.WARNING)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=31))
-            self.assertEqual(0, self.handler.count_logs(level=39))
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-                )
-            self.assertEqual(0, self.handler.count_logs(level=41))
-            self.assertEqual(0, self.handler.count_logs(level=49))
-            self.assertEqual(
-                EXPECTED_CRITICALS,
-                self.handler.count_logs(level=logging.CRITICAL)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=51))
-
-    def test_level_segregation_at_error(self):
-        """Each boundary of level, +/- 1"""
-        self.logger.setLevel(logging.ERROR)
-
-        with self.reset_logger():
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs(level=0))
-            self.assertEqual(0, self.handler.count_logs(level=1))
-            self.assertEqual(0, self.handler.count_logs(level=9))
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(0, self.handler.count_logs(level=11))
-            self.assertEqual(0, self.handler.count_logs(level=19))
-            self.assertEqual(0, self.handler.count_logs(level=logging.INFO))
-            self.assertEqual(0, self.handler.count_logs(level=21))
-            self.assertEqual(0, self.handler.count_logs(level=29))
-            self.assertEqual(0, self.handler.count_logs(level=logging.WARNING))
-            self.assertEqual(0, self.handler.count_logs(level=31))
-            self.assertEqual(0, self.handler.count_logs(level=39))
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=41))
-            self.assertEqual(0, self.handler.count_logs(level=49))
-            self.assertEqual(
-                EXPECTED_CRITICALS,
-                self.handler.count_logs(level=logging.CRITICAL)
-            )
-            self.assertEqual(0, self.handler.count_logs(level=51))
-
-    def test_ignores_regex(self):
-        """Filter, using test regex (test-on-test)"""
-        self.logger.setLevel(logging.WARNING)
-
-        with self.reset_logger():
-            do_logging(self)
-
-            self.assertEqual(2, self.handler.count_logs(r"Log [34]"))
-            self.assertEqual(1, self.handler.count_logs(r"Log [36]"))
-            self.assertEqual(
-                4, self.handler.count_logs(r"Another log \d", logging.WARNING)
-            )
-            self.assertEqual(11, self.handler.count_logs(r".+o.+", logging.WARNING))
-            # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(11, self.handler.count_logs(level=logging.WARNING))
-            self.assertEqual(6, self.handler.count_logs(level=logging.ERROR))
-            self.assertEqual(18, self.handler.count_logs())
-
-
-class TestLogLimitPattern(unittest.TestCase):
-    def setUp(self):
-
-        super().setUp()
-        self.logger = logging.getLogger(__name__)
-        dump_log(self.logger)
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        # Check level of nested logHandlers/logFilters
-        # We do not want negotiated getEffectiveLevel() here
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        self.assertEqual(0, self.original_log_level, "log level is no longer NOTSET.")
-        self.logger.setLevel(logging.WARNING)  # that do not work
-        self.assertEqual(
-            logging.WARNING, self.logger.level, "log level is no longer WARNING."
+        assert (0 == self.count_logs(level=0))
+        assert 0 == self.count_logs(level=1)
+        assert 0 == self.count_logs(level=9)
+        assert EXPECTED_DEBUGS == self.count_logs(level=logging.DEBUG)
+        assert 0 == self.count_logs(level=11)
+        assert 0 == self.count_logs(level=19)
+        assert EXPECTED_INFOS == self.count_logs(level=logging.INFO)
+        assert 0 == self.count_logs(level=21)
+        assert 0 == self.count_logs(level=29)
+        assert (
+            (
+                EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2
+            ) ==
+            self.count_logs(level=logging.WARNING)
         )
-        dump_log(self.logger)
+        assert 0 == self.count_logs(level=31)
+        assert 0 == self.count_logs(level=39)
+        assert EXPECTED_ERRORS == self.count_logs(level=logging.ERROR)
+        assert 0 == self.count_logs(level=41)
+        assert 0 == self.count_logs(level=49)
+        assert EXPECTED_CRITICALS == self.count_logs(level=logging.CRITICAL)
+        assert 0 == self.count_logs(level=51)
 
-    def tearDown(self):
-        _reset_limit_filter()
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
+    def test_level_segregation_at_info(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Each boundary of level, +/- 1"""
+        target_level = logging.INFO
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-    @contextmanager
-    def reset_logger(self):
-        try:
-            yield None
-        finally:
-            _reset_limit_filter()
-            self.handler.flush()
+            do_logging(test_log)
 
-    # TODO  Could not we add a unit test to ignore just only the pattern and not level?
+        """Each boundary of level, +/- 1"""
+        assert (0 == self.count_logs(level=0))
+        assert 0 == self.count_logs(level=1)
+        assert 0 == self.count_logs(level=9)
+        assert 0 == self.count_logs(level=logging.DEBUG)
+        assert 0 == self.count_logs(level=11)
+        assert 0 == self.count_logs(level=19)
+        assert EXPECTED_INFOS == self.count_logs(level=logging.INFO)
+        assert 0 == self.count_logs(level=21)
+        assert 0 == self.count_logs(level=29)
+        assert (
+            (
+                EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2
+            ) ==
+            self.count_logs(level=logging.WARNING)
+        )
+        assert 0 == self.count_logs(level=31)
+        assert 0 == self.count_logs(level=39)
+        assert EXPECTED_ERRORS == self.count_logs(level=logging.ERROR)
+        assert 0 == self.count_logs(level=41)
+        assert 0 == self.count_logs(level=49)
+        assert EXPECTED_CRITICALS == self.count_logs(level=logging.CRITICAL)
+        assert 0 == self.count_logs(level=51)
 
-    def test_dataset_check_entire(self):
+    def test_level_segregation_at_warning(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Each boundary of level, +/- 1"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            do_logging(test_log)
+
+        """Each boundary of level, +/- 1"""
+        assert (0 == self.count_logs(level=0))
+        assert 0 == self.count_logs(level=1)
+        assert 0 == self.count_logs(level=9)
+        assert 0 == self.count_logs(level=logging.DEBUG)
+        assert 0 == self.count_logs(level=11)
+        assert 0 == self.count_logs(level=19)
+        assert 0 == self.count_logs(level=logging.INFO)
+        assert 0 == self.count_logs(level=21)
+        assert 0 == self.count_logs(level=29)
+        assert (
+            (
+                EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2
+            ) ==
+            self.count_logs(level=logging.WARNING)
+        )
+        assert 0 == self.count_logs(level=31)
+        assert 0 == self.count_logs(level=39)
+        assert EXPECTED_ERRORS == self.count_logs(level=logging.ERROR)
+        assert 0 == self.count_logs(level=41)
+        assert 0 == self.count_logs(level=49)
+        assert EXPECTED_CRITICALS == self.count_logs(level=logging.CRITICAL)
+        assert 0 == self.count_logs(level=51)
+
+    def test_level_segregation_at_error(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Each boundary of level, +/- 1"""
+        target_level = logging.ERROR
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            do_logging(test_log)
+
+        """Each boundary of level, +/- 1"""
+        assert (0 == self.count_logs(level=0))
+        assert 0 == self.count_logs(level=1)
+        assert 0 == self.count_logs(level=9)
+        assert 0 == self.count_logs(level=logging.DEBUG)
+        assert 0 == self.count_logs(level=11)
+        assert 0 == self.count_logs(level=19)
+        assert 0 == self.count_logs(level=logging.INFO)
+        assert 0 == self.count_logs(level=21)
+        assert 0 == self.count_logs(level=29)
+        assert 0 == self.count_logs(level=logging.WARNING)
+        assert 0 == self.count_logs(level=31)
+        assert 0 == self.count_logs(level=39)
+        assert EXPECTED_ERRORS == self.count_logs(level=logging.ERROR)
+        assert 0 == self.count_logs(level=41)
+        assert 0 == self.count_logs(level=49)
+        assert EXPECTED_CRITICALS == self.count_logs(level=logging.CRITICAL)
+        assert 0 == self.count_logs(level=51)
+
+    def test_ignores_regex(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using test regex (test-on-test)"""
+        target_level = logging.INFO
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            do_logging(test_log)
+
+            assert self.count_logs(r"Log [34]") == 2
+            assert self.count_logs(r"Log [36]") == 1
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            assert (
+                self.count_logs(r".+o.+", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2)
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            assert self.count_logs(level=logging.WARNING) == EXPECTED_WARNINGS
+            assert self.count_logs(level=logging.ERROR) == 6
+            assert (
+                self.count_logs() ==
+                (
+                    EXPECTED_CRITICALS +
+                    EXPECTED_INFOS +
+                    (EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2) +
+                    EXPECTED_ERRORS
+                )
+            )
+
+
+class TestLogUninstalledLimit:
+    """Pattern Check; FatalLogger(LimitLogger) is not installed yet"""
+    def count_logs(self, pattern=None, level=None):
+        count = 0
+        for logger_name, log_lvl, log_msg in self._caplog.record_tuples[:]:
+            if (
+                (level is None or log_lvl == level) and
+                (pattern is None or re.match(pattern, log_msg))
+            ):
+                print(f'name: {logger_name} lvl: {log_lvl} msg: "{log_msg}"')
+                count = count + 1
+        return count
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_dataset_check_entire(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
+        target_level = logging.INFO
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
         expected_total = (
             EXPECTED_CRITICALS +
-            (EXPECTED_WARNINGS_MSG1 - 1) +
-            EXPECTED_WARNINGS_MSG2_LIMIT +
-            WARNING_LIMIT_EMITTED +
+            (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                WARNING_LIMIT_EMITTED
+            ) +
             EXPECTED_ERRORS
         )
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.assertEqual(expected_total, self.handler.count_logs())
+            assert self.count_logs() == expected_total
 
-    def test_dataset_all_another(self):
+    def test_dataset_all_another(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
+            )
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            do_logging(test_log)
 
-            do_logging(self)
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
 
-            self.assertEqual(
-                EXPECTED_WARNINGS_LIMIT,
-                self.handler.count_logs(level=logging.WARNING)
+    def test_dataset_filter_all_log(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs(level=logging.DEBUG) == 0
+
+    def test_dataset_all_log_warning(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2_LIMIT,
             )
 
-    def test_dataset_filter_all_log(self):
+    def test_dataset_all_log_filtered(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            do_logging(test_log)
 
-            do_logging(self)
+            assert self.count_logs("Log 3", logging.WARNING) == 0
 
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-
-    def test_dataset_all_log_warning(self):
+    def test_exact_pattern(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            do_logging(test_log)
 
-            do_logging(self)
-
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
-            )
-
-    def test_dataset_all_log_filtered(self):
-        """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
-
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs("Log 3", logging.WARNING))
-
-    def test_exact_pattern(self):
-        """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
-
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-
-            do_logging(self)
-
-            self.assertEqual(0, self.handler.count_logs("Log 3", logging.WARNING))
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert self.count_logs("Log 3", logging.WARNING) == 1
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            self.assertEqual(
-                EXPECTED_WARNINGS_LIMIT,
-                self.handler.count_logs(level=logging.WARNING)
+            assert self.count_logs(level=logging.DEBUG) == 0
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                EXPECTED_WARNINGS
             )
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
+            assert (
+                self.count_logs(level=logging.ERROR) ==
+                EXPECTED_ERRORS
             )
             total_expected = (
                 EXPECTED_CRITICALS +
-                (EXPECTED_WARNINGS_MSG1 - 1) +
-                EXPECTED_WARNINGS_MSG2_LIMIT +
-                WARNING_LIMIT_EMITTED +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
                 EXPECTED_ERRORS
             )
-            self.assertEqual(total_expected, self.handler.count_logs())
+            assert self.count_logs() == total_expected
 
-    def test_exact_pattern_another_log_5(self):
+    def test_exact_pattern_another_log_5(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by exact pattern"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-        dump_log(self.logger)
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
-        with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            do_logging(test_log)
 
-            do_logging(self)
-
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
             )
 
-    def test_template_word(self):
+    def test_template_word(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by word template"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-
-        with self.reset_logger():
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             # This pattern ignores out everything that has a word before ' log '
             log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG1,
-                self.handler.count_logs("Log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG1
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs(r"Another log \d", logging.WARNING)
-            )
-            # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            expected_warnings = (
-                EXPECTED_WARNINGS_MSG1 - 1 +
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
                 EXPECTED_WARNINGS_MSG2
             )
-            self.assertEqual(
-                expected_warnings,
-                self.handler.count_logs(level=logging.WARNING)
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
             )
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
             expected_total = (
                 EXPECTED_CRITICALS +
-                EXPECTED_WARNINGS_LIMIT +
-                WARNING_LIMIT_EMITTED +
+                EXPECTED_WARNINGS +
                 EXPECTED_ERRORS
             )
-            self.assertEqual(expected_total, self.handler.count_logs())
+            assert self.count_logs() == expected_total
 
-    def test_template_digit_one(self):
+    def test_template_digit_one(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by digit template"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
-
-        with self.reset_logger():
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with (self._caplog.at_level(target_level)):
+            self._caplog.clear()
             # This pattern ignores out everything that starts with `Log `
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.assertEqual(0, self.handler.count_logs(r"Log \\d", logging.WARNING))
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs(r"Another log \d", logging.WARNING)
+            assert self.count_logs(r"Log \\d", logging.WARNING) == 0
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
-            expected_warnings = EXPECTED_WARNINGS_LIMIT - 1 + WARNING_LIMIT_EMITTED
-            self.assertEqual(
-                expected_warnings,
-                self.handler.count_logs(level=logging.WARNING)
-            )
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
+            assert self.count_logs(level=logging.DEBUG) == 0
+            # expected_warnings = EXPECTED_WARNINGS_LIMIT - 1 + WARNING_LIMIT_EMITTED
+            expected_warnings = EXPECTED_WARNINGS
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
             expected_total = (
                 EXPECTED_CRITICALS +
-                (EXPECTED_WARNINGS_MSG1 - 1) +
-                EXPECTED_WARNINGS_MSG2_LIMIT +
-                WARNING_LIMIT_EMITTED +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                # WARNING_LIMIT_EMITTED +
                 EXPECTED_ERRORS
             )
-            self.assertEqual(expected_total, self.handler.count_logs())
+            assert self.count_logs() == expected_total
 
-    def test_regex_template_digit_all(self):
+    def test_regex_template_digit_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter by digit template"""
-        self.logger.setLevel(logging.WARNING)  # presumptive default level
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
 
-        with (self.reset_logger()):
             # This pattern ignores out everything that starts with `Log `
             log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.assertEqual(
-                (EXPECTED_WARNINGS_MSG1 - EXPECTED_WARNINGS_MSG1),
-                self.handler.count_logs(r"Log \\d", logging.WARNING))
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs(r"Another log \d", logging.WARNING)
+            assert (
+                self.count_logs(r"Log \\d", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 - EXPECTED_WARNINGS_MSG1)
+            )
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
+            assert self.count_logs(level=logging.DEBUG) == 0
             total_warnings = (
                 EXPECTED_WARNINGS_MSG1 +
-                EXPECTED_WARNINGS_MSG2_LIMIT +
-                WARNING_LIMIT_EMITTED
+                EXPECTED_WARNINGS_MSG2  # +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                # WARNING_LIMIT_EMITTED
             )
-            self.assertEqual(
-                total_warnings,
-                self.handler.count_logs(level=logging.WARNING)
-            )
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-            )
+            assert self.count_logs(level=logging.WARNING) == total_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
             expected_total = (
                 EXPECTED_CRITICALS +
-                EXPECTED_WARNINGS_LIMIT +
-                EXPECTED_ERRORS +
-                WARNING_LIMIT_EMITTED
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS  # +
+                # WARNING_LIMIT_EMITTED
             )
-            self.assertEqual(expected_total, self.handler.count_logs())
+            assert self.count_logs() == expected_total
 
-    def test_filter_warnings_detect_debug_only(self):
+    def test_filter_warnings_detect_debug_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG1 - 1,
-                self.handler.count_logs("Log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                EXPECTED_WARNINGS_MSG1
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.DEBUG))
+            assert self.count_logs(level=logging.DEBUG) == 0
 
-    def test_filter_warnings_detect_info_only(self):
+    def test_filter_warnings_detect_info_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
                 (EXPECTED_WARNINGS_MSG1 - 1),
-                self.handler.count_logs("Log \\d", logging.WARNING)
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(0, self.handler.count_logs(level=logging.INFO))
+            assert self.count_logs(level=logging.INFO) == 0
 
-    def test_filter_warnings_detect_warning_only(self):
+    def test_filter_warnings_detect_warning_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
-                (EXPECTED_WARNINGS_MSG1 - 1),
-                self.handler.count_logs("Log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
             expected_total = (
-                (EXPECTED_WARNINGS_MSG1 - 1) +
-                EXPECTED_WARNINGS_MSG2_LIMIT +
-                WARNING_LIMIT_EMITTED
+                # (EXPECTED_WARNINGS_MSG1 - 1) +
+                (EXPECTED_WARNINGS_MSG1 - 0) +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                EXPECTED_WARNINGS_MSG2  # +
+                # WARNING_LIMIT_EMITTED
             )
-            self.assertEqual(
-                expected_total,
-                self.handler.count_logs(level=logging.WARNING)
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                expected_total
             )
 
-    def test_filter_warnings_detect_error_only(self):
+    def test_filter_warnings_detect_error_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG1 - 1,
-                self.handler.count_logs("Log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(
-                EXPECTED_ERRORS,
-                self.handler.count_logs(level=logging.ERROR)
-                )
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
 
-    def test_filter_warnings_detect_critical_only(self):
+    def test_filter_warnings_detect_critical_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
-                (EXPECTED_WARNINGS_MSG1 - 1),
-                self.handler.count_logs("Log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
             )
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
-            self.assertEqual(
-                EXPECTED_CRITICALS,
-                self.handler.count_logs(level=logging.CRITICAL)
+            assert (
+                self.count_logs(level=logging.CRITICAL) ==
+                EXPECTED_CRITICALS
             )
 
-    def test_filter_warnings_detect_dataset_all(self):
+    def test_filter_warnings_detect_dataset_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
         """Filter, using all attributes"""
-
-        with self.reset_logger():
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
             log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
             log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
 
-            do_logging(self)
+            do_logging(test_log)
 
-            self.logger.setLevel(logging.WARNING)  # presumptive default level
-            self.logger.level = logging.WARNING
-            self.assertEqual(
-                (EXPECTED_WARNINGS_MSG1 - 1),
-                self.handler.count_logs("Log \\d", logging.WARNING))
-            self.assertEqual(
-                EXPECTED_WARNINGS_MSG2_LIMIT,
-                self.handler.count_logs("Another log \\d", logging.WARNING)
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
             )
             # total log buffer dataset check
             expected_total = (
                 EXPECTED_CRITICALS +
-                EXPECTED_WARNINGS_LIMIT +
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
                 EXPECTED_ERRORS
             )
-            self.assertEqual(expected_total, self.handler.count_logs())
+            assert self.count_logs() == expected_total
 
 
-class TestLogLimitPatternInfoLevel(unittest.TestCase):
+class TestLogInstalledLimit:
+    """Pattern Check; FatalLogger(LimitLogger) IS INSTALLED """
+    def count_logs(self, pattern=None, level=None):
+        count = 0
+        for logger_name, log_lvl, log_msg in self._caplog.record_tuples[:]:
+            if (
+                (level is None or log_lvl == level) and
+                (pattern is None or re.match(pattern, log_msg))
+            ):
+                print(f'name: {logger_name} lvl: {log_lvl} msg: "{log_msg}"')
+                count = count + 1
+        return count
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_dataset_check_entire(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.INFO
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        expected_total = (
+            EXPECTED_CRITICALS +
+            (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                WARNING_LIMIT_EMITTED
+            ) +
+            EXPECTED_ERRORS
+        )
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs() == expected_total
+
+    def test_dataset_all_another(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
+            )
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+
+    def test_dataset_filter_all_log(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs(level=logging.DEBUG) == 0
+
+    def test_dataset_all_log_warning(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2_LIMIT,
+            )
+
+    def test_dataset_all_log_filtered(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs("Log 3", logging.WARNING) == 0
+
+    def test_exact_pattern(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs("Log 3", logging.WARNING) == 1
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                EXPECTED_WARNINGS
+            )
+            assert (
+                self.count_logs(level=logging.ERROR) ==
+                EXPECTED_ERRORS
+            )
+            total_expected = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == total_expected
+
+    def test_exact_pattern_another_log_5(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+
+    def test_template_word(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by word template"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            # This pattern ignores out everything that has a word before ' log '
+            log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG1
+            )
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
+            )
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+    def test_template_digit_one(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by digit template"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with (self._caplog.at_level(target_level)):
+            self._caplog.clear()
+            # This pattern ignores out everything that starts with `Log `
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+
+            do_logging(test_log)
+
+            assert self.count_logs(r"Log \\d", logging.WARNING) == 0
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            # expected_warnings = EXPECTED_WARNINGS_LIMIT - 1 + WARNING_LIMIT_EMITTED
+            expected_warnings = EXPECTED_WARNINGS
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                # WARNING_LIMIT_EMITTED +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+    def test_regex_template_digit_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter by digit template"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            # This pattern ignores out everything that starts with `Log `
+            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs(r"Log \\d", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 - EXPECTED_WARNINGS_MSG1)
+            )
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            total_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2  # +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert self.count_logs(level=logging.WARNING) == total_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS  # +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert self.count_logs() == expected_total
+
+    def test_filter_warnings_detect_debug_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                EXPECTED_WARNINGS_MSG1
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+
+    def test_filter_warnings_detect_info_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 - 1),
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.INFO) == 0
+
+    def test_filter_warnings_detect_warning_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            expected_total = (
+                # (EXPECTED_WARNINGS_MSG1 - 1) +
+                (EXPECTED_WARNINGS_MSG1 - 0) +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                EXPECTED_WARNINGS_MSG2  # +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                expected_total
+            )
+
+    def test_filter_warnings_detect_error_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+
+    def test_filter_warnings_detect_critical_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert (
+                self.count_logs(level=logging.CRITICAL) ==
+                EXPECTED_CRITICALS
+            )
+
+    def test_filter_warnings_detect_dataset_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        new_test_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_test_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            expected_total = (
+                EXPECTED_CRITICALS +
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+
+class TestLogLimitPatternInfoLevel:
     def setUp(self):
         super().setUp()
         self.logger = logging.getLogger(__name__)
@@ -1095,7 +1807,7 @@ class TestLogLimitPatternInfoLevel(unittest.TestCase):
             self.assertEqual(self.handler.count_logs(), expected_total)
 
 
-class TestLogLimitPatternDebugLevel(unittest.TestCase):
+class TestLogLimitPatternDebugLevel:
     def setUp(self):
         super().setUp()
         self.logger = logging.getLogger(__name__)
@@ -1323,7 +2035,7 @@ class TestLogLimitPatternDebugLevel(unittest.TestCase):
             self.assertEqual(expected_total, self.handler.count_logs())
 
 
-class TestLogLimitThreshold(unittest.TestCase):
+class TestLogLimitThreshold:
 
     def setUp(self):
         super().setUp()
