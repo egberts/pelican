@@ -175,14 +175,382 @@ def new_pelican_logger(
     yield test_logger
 
 
-class TestLogInitBasic:
+class TestLogInitArgumentLevel:
+    """Exercise level argument in pelican.log.init()"""
+    # def init(
+    #     level=None,
+    #     fatal="",
+    #     handler=DEFAULT_LOG_HANDLER,
+    #     name=None,
+    #     logs_dedup_min_level=None,
+    # ):
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
 
-    def test_argument_handlers_invalid(
+    def test_argument_level_none(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level=None)
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_syntax_list(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level={})
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_syntax_dict(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level=[])
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_int_valid(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level=0)
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_valid_critical(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="CRITICAL")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_valid_error(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="ERROR")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_valid_warning(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="WARNING")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_valid_info(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="INFO")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_valid_debug(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="DEBUG")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_level_str_invalid(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level="CriTiCaL")  # to fail
+            assert False
+        except ValueError:
+            assert True
+        except any:
+            assert False
+
+    def test_log_init_level_syntax_set(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level=())
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_log_init_level_syntax_list(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level=[])
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_log_init_level_syntax_dict(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(level={})
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+
+class TestLogInitArgumentFatal:
+    """Exercise level argument in pelican.log.init()"""
+
+    # def init(
+    #     level=None,
+    #     fatal="",
+    #     handler=DEFAULT_LOG_HANDLER,
+    #     name=None,
+    #     logs_dedup_min_level=None,
+    # ):
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_argument_fatal_str_valid_blank(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal="")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_str_valid_warning(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal="warning")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_str_valid_warning_error(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal="warning-error")
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_none(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal=None)
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_syntax_int(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal=1)
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_syntax_bool(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal=True)
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_syntax_list(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal={})
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_syntax_dict(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal=[])
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_argument_fatal_syntax_set(
+        self,
+        capture_log,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        try:
+            pelican.log.init(fatal=())
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+
+class TestLogInitArgumentHandler:
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_argument_handler_none(
+        self,
+        reset_root_logger_to_pelican__fixture_func
+    ):
+        try:
+            pelican.log.init(handler=None)
+            assert True
+        except any:
+            assert False
+
+    def test_argument_handler_invalid(
         self,
         reset_root_logger_to_pelican__fixture_func
     ):
         try:
             pelican.log.init(handler=[])
             assert False
-        except SyntaxError:
+        except TypeError:
             assert True
+
+
+class TestLogInitArgumentName:
+    """Exercise level argument in pelican.log.init()"""
+
+    # def init(
+    #     level=None,
+    #     fatal="",
+    #     handler=DEFAULT_LOG_HANDLER,
+    #     name=None,
+    #     logs_dedup_min_level=None,
+    # ):
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_init_argument_name_valid(self, capture_log):
+        try:
+            pelican.log.init(name=None)
+            assert True
+        except any:
+            assert False
+        except any:
+            assert False
+
+    def test_init_argument_name_syntax_int(self, capture_log):
+        try:
+            pelican.log.init(name=1234)
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
