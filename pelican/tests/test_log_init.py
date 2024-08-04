@@ -537,18 +537,55 @@ class TestLogInitArgumentName:
         """Save the console output by logger"""
         self._caplog = caplog
 
-    def test_init_argument_name_valid(self, capture_log):
+    def test_init_argument_name_none_valid(self):
         try:
             pelican.log.init(name=None)
             assert True
         except any:
             assert False
+
+    def test_init_argument_name_str_valid(self):
+        try:
+            pelican.log.init(name="test_module")
+            assert False
+        except TypeError:
+            assert True
         except any:
             assert False
 
-    def test_init_argument_name_syntax_int(self, capture_log):
+    def test_init_argument_name_syntax_int(self):
         try:
             pelican.log.init(name=1234)
+            assert False
+        except TypeError:
+            assert True
+
+    def test_init_argument_name_syntax_list(self):
+        try:
+            pelican.log.init(name=[])
+            assert False
+        except TypeError:
+            assert True
+
+    def test_init_argument_name_syntax_dict(self):
+        try:
+            pelican.log.init(name={})
+            assert False
+        except TypeError:
+            assert True
+
+    def test_init_argument_name_syntax_set(self):
+        try:
+            pelican.log.init(name=())
+            assert False
+        except TypeError:
+            assert True
+        except any:
+            assert False
+
+    def test_init_argument_name_str_invalid(self, capture_log):
+        try:
+            pelican.log.init(name="a.b.c.d")
             assert False
         except TypeError:
             assert True
