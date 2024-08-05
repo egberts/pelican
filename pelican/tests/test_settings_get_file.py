@@ -17,17 +17,17 @@
 
 import contextlib
 import copy
+import filelock
 import locale
 import logging
 import os
-import sys
 from pathlib import Path
-
-import filelock
 import pytest
+import sys
 
 from pelican.settings import (
     DEFAULT_CONFIG,
+    DEFAULT_MODULE_NAME,
     Settings,
     get_settings_from_file,
 )
@@ -178,14 +178,14 @@ class TestSettingsGetFile:
             theme_path = "notmyidea"
             previous["THEME"] = theme_path
 
-        current: Settings = get_settings_from_file(str(default_conf))
+        current: Settings = get_settings_from_file(str(default_conf), reload=False)
 
         assert_difference_in_settings(previous, current)
         assert previous == current
 
-        if module_expected_in_sys_modules("pelicanconf-default"):  # TODO Issue #09001
-            del sys.modules["pelicanconf-default"]
-        module_not_expected_in_sys_modules("pelicanconf-default")
+        if module_expected_in_sys_modules(DEFAULT_MODULE_NAME): # TODO Issue #09001
+            del sys.modules[DEFAULT_MODULE_NAME]
+        module_not_expected_in_sys_modules(DEFAULT_MODULE_NAME)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,62 @@
 
+import contextlib
+import filelock
 import logging
-import pelican
-from pelican import logger
+import os
 import pytest
+import re
 import rich
 import rich.logging
+
+import pelican
+from pelican import logger
+
+EXPECTED_DEBUG_ITER = 1
+EXPECTED_DEBUGS = (1 * EXPECTED_DEBUG_ITER)
+EXPECTED_INFO_ITER = 1
+EXPECTED_INFOS = (1 * EXPECTED_INFO_ITER)
+EXPECTED_WARNING_ITER = 6
+EXPECTED_WARNINGS_MSG1 = (1 * EXPECTED_WARNING_ITER)
+EXPECTED_WARNINGS_MSG2 = (1 * EXPECTED_WARNING_ITER)
+PASSING_LIMIT_THRESHOLD = pelican.log.LimitFilter._threshold - 1  # NOQA
+EXPECTED_WARNINGS_MSG2_LIMIT = min(
+    (1 * EXPECTED_WARNING_ITER),
+    PASSING_LIMIT_THRESHOLD)
+EXPECTED_WARNINGS = EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2
+EXPECTED_WARNINGS_LIMIT = EXPECTED_WARNINGS_MSG1 + EXPECTED_WARNINGS_MSG2_LIMIT
+WARNING_LIMIT_EMITTED = 1
+EXPECTED_ERROR_ITER = 6
+EXPECTED_ERRORS = (1 * EXPECTED_ERROR_ITER)
+EXPECTED_ERRORS_CAPPED = 1
+EXPECTED_CRITICAL_ITER = 1
+EXPECTED_CRITICALS = (1 * EXPECTED_CRITICAL_ITER)
+EXPECTED_TOTAL_LOG = (
+    EXPECTED_DEBUGS +
+    EXPECTED_INFOS +
+    EXPECTED_WARNINGS_LIMIT +
+    WARNING_LIMIT_EMITTED +
+    EXPECTED_ERRORS_CAPPED +
+    EXPECTED_CRITICALS
+)
+
+
+def do_logging(test_logger: logging.Logger):
+    """Populate log content"""
+    for i in range(EXPECTED_CRITICAL_ITER):
+        test_logger.critical("A pseudo message of 'we are crashing'")
+
+    for i in range(EXPECTED_INFO_ITER):
+        test_logger.info("Unit testing log")
+    for i in range(EXPECTED_WARNING_ITER):
+        test_logger.warning("Log %s", i)
+        test_logger.warning(
+            f"Another log {i!s}",
+            extra={'limit_msg': 'A generic message for too many warnings'}
+        )
+    for i in range(EXPECTED_ERROR_ITER):
+        test_logger.error("Flooding error repeating")
+    for i in range(EXPECTED_DEBUG_ITER):
+        test_logger.debug("Unit testing Log @ debug level")
 
 
 def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
@@ -110,7 +162,7 @@ def initialize_pelican_logger() -> logging.Logger.__class__:
     # if pelican.log.init.logs_dedup_min_level:
     #     pelican.log.LimitFilter.LOGS_DEDUP_MIN_LEVEL =
     #         pelican.log.init.logs_dedup_min_level
-    test_logger = logger   # global variable inside pelican.__init__.logger
+    test_logger = logger  # global variable inside pelican.__init__.logger
     assert test_logger.__class__.__subclasses__() == []
     return test_logger
 
@@ -118,6 +170,26 @@ def initialize_pelican_logger() -> logging.Logger.__class__:
 ##########################################################################
 #  Fixtures
 ##########################################################################
+@pytest.fixture(scope="session")
+def serial_lock__fixture_session(tmp_path_factory):
+    base_temp = tmp_path_factory.getbasetemp()
+    lock_file = base_temp.parent / "serial.lock"
+    yield filelock.FileLock(lock_file=str(lock_file))
+    with contextlib.suppress(OSError):
+        os.remove(path=lock_file)
+
+
+@pytest.fixture(scope="function")
+def serialize_functions__fixture_func(serial_lock__fixture_session):
+    """mark function test as serial/sequential ordering
+
+    Include `serial` in the function's argument list ensures
+    that no other test(s) also having `serial` in its argument list
+    shall run."""
+    with serial_lock__fixture_session.acquire(poll_interval=0.1):
+        yield
+
+
 @pytest.fixture(scope="function")
 def display_attributes_around_pelican_root_logger__fixture_func():
     # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
@@ -175,8 +247,54 @@ def new_pelican_logger(
     yield test_logger
 
 
+@pytest.fixture(scope="function")
+def display_attributes_around_python_root_logger__fixture_func():
+    # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
+    print_logger("root (before)", logging.root)
+    yield
+    print_logger("root (after)", logging.root)
+
+
+@pytest.fixture(scope="function")
+def reset_root_logger_to_python__fixture_func():
+    """Undo any custom RootLogger"""
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def display_reset_root_logger_to_python__fixture_func(
+    display_attributes_around_python_root_logger__fixture_func
+):
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def new_test_logger(
+    reset_root_logger_to_python__fixture_func
+):
+    # At this point, it is a virgin Python CLI startup,
+    # right after loading the logging module
+    try:
+        logging.getLogger("any_name_should_fail")
+        raise AssertionError("Not a clean empty Logger")
+    except ValueError:
+        # Correct error for an unused Logger
+        test_logger = logging.getLogger()
+
+    yield test_logger
+
+
 class TestLogInitArgumentLevel:
     """Exercise level argument in pelican.log.init()"""
+
     # def init(
     #     level=None,
     #     fatal="",
@@ -547,8 +665,6 @@ class TestLogInitArgumentName:
     def test_init_argument_name_str_valid(self):
         try:
             pelican.log.init(name="test_module")
-            assert False
-        except TypeError:
             assert True
         except any:
             assert False
@@ -585,9 +701,165 @@ class TestLogInitArgumentName:
 
     def test_init_argument_name_str_invalid(self, capture_log):
         try:
-            pelican.log.init(name="a.b.c.d")
+            pelican.log.init(name="*a.b.c.d")
             assert False
         except TypeError:
             assert True
-        except any:
-            assert False
+
+
+class TestLogInitArgumentDedups:
+
+    def count_logs(self, pattern=None, level=None):
+        """Matches a regex pattern from start
+
+        If you wanted anywhere in a string, use:
+
+            pattern = r'.+my_pattern'
+        """
+        count = 0
+        for logger_name, log_lvl, log_msg in self._caplog.record_tuples[:]:
+            if (
+                (level is None or log_lvl == level) and
+                (pattern is None or re.match(pattern, log_msg))
+            ):
+                print(f'name: {logger_name} lvl: {log_lvl} msg: "{log_msg}"')
+                count = count + 1
+        return count
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+        self._caplog.clear()
+
+    def test_hit_repeating_errors(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        serialize_functions__fixture_func
+    ):
+        logger_name = __name__
+        pelican.log.init(
+            level=logging.INFO,
+            name=logger_name,
+            logs_dedup_min_level=logging.CRITICAL
+        )
+        test_log: logging.Logger = pelican.logger
+        target_pattern = "Flooding error repeating"
+        with self._caplog.at_level(logging.WARNING):
+            self._caplog.clear()
+
+            do_logging(test_log)
+
+        assert self.count_logs(level=logging.ERROR, pattern=target_pattern) == 1
+
+    def test_miss_limit_threshold(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        serialize_functions__fixture_func
+    ):
+        new_threshold = 7
+        pelican.log.init(
+            level=logging.WARNING,
+            name=None,  # using 'None'
+            logs_dedup_min_level=logging.ERROR
+        )
+        test_log: logging.Logger = pelican.logger
+        original_threshold = pelican.log.LimitFilter._threshold
+        pelican.log.LimitFilter._threshold = new_threshold
+        with self._caplog.at_level(logging.WARNING):
+        #    self._caplog.clear()
+            target_pattern = "A generic message"
+            do_logging(test_log)
+
+        total_expected = (
+            EXPECTED_CRITICALS +
+            EXPECTED_WARNINGS_MSG1 +
+            (
+                EXPECTED_WARNINGS_MSG2_LIMIT -
+                (original_threshold - new_threshold + 1)
+            ) +
+            WARNING_LIMIT_EMITTED +
+            EXPECTED_ERRORS_CAPPED
+        )
+        assert len(self._caplog.record_tuples) == total_expected
+        assert self.count_logs(
+            pattern=target_pattern) == 0, ("generic message unexpectedly in log; "
+                                           "threshold failed")
+
+        pelican.log.LimitFilter._threshold = original_threshold
+
+    def test_hit_limit_threshold(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        serialize_functions__fixture_func
+    ):
+        new_threshold = 6
+        pelican.log.init(
+            level=logging.WARNING,
+            name=None,  # first time using 'None'
+            logs_dedup_min_level=logging.ERROR
+        )
+        test_log: logging.Logger = pelican.logger
+        original_threshold = pelican.log.LimitFilter._threshold
+        pelican.log.LimitFilter._threshold = new_threshold
+        with self._caplog.at_level(logging.WARNING):
+            self._caplog.clear()
+
+            target_pattern = "A generic message"
+            do_logging(test_log)
+
+        total_expected = (
+            EXPECTED_CRITICALS +
+            EXPECTED_WARNINGS_MSG1 +
+            (
+                EXPECTED_WARNINGS_MSG2_LIMIT -
+                (original_threshold - new_threshold)
+            ) +
+            WARNING_LIMIT_EMITTED +
+            EXPECTED_ERRORS_CAPPED
+        )
+        assert len(self._caplog.record_tuples) == total_expected
+        assert self.count_logs(pattern=target_pattern) == 1, \
+            "generic message not in log; threshold failed"
+
+        pelican.log.LimitFilter._threshold = original_threshold
+
+    def test_over_the_limit_threshold(
+        self,
+        capture_log,
+        display_reset_root_logger_to_python__fixture_func,
+        serialize_functions__fixture_func
+    ):
+        new_threshold = 5
+        pelican.log.init(
+            level=logging.WARNING,
+            name=None,  # First time using 'None'
+            logs_dedup_min_level=logging.ERROR
+        )
+        test_log: logging.Logger = pelican.logger
+        original_threshold = pelican.log.LimitFilter._threshold
+        pelican.log.LimitFilter._threshold = new_threshold
+        with self._caplog.at_level(logging.WARNING):
+            self._caplog.clear()
+
+            target_pattern = "A generic message"
+            do_logging(test_log)
+
+        total_expected = (
+            EXPECTED_CRITICALS +
+            EXPECTED_WARNINGS_MSG1 +
+            (
+                EXPECTED_WARNINGS_MSG2_LIMIT +
+                (new_threshold - original_threshold)
+            ) +
+            WARNING_LIMIT_EMITTED +
+            EXPECTED_ERRORS_CAPPED
+        )
+        assert len(self._caplog.record_tuples) == total_expected
+        assert self.count_logs(pattern=target_pattern) == 1, ("generic message not in "
+                                                              "log; threshold failed")
+
+        pelican.log.LimitFilter._threshold = original_threshold

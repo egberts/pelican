@@ -3,11 +3,13 @@ import pytest
 import re
 from collections import defaultdict
 from contextlib import contextmanager
+import pelican
+from pelican import logger  # only way to get current Pelican Logger
+# from pelican.tests.support import LogCountHandler
+import rich
+import rich.logging
 
-from pelican import log, logger
-from pelican.tests.support import LogCountHandler
-
-__all__ = ["LogCountHandler"]
+# __all__ = ["LogCountHandler"]
 
 import sys
 
@@ -21,10 +23,10 @@ def dump_log(this_logger: logging.Logger):
 
 def _reset_limit_filter():
     """Empty the Pelican Limit Log filter"""
-    log.LimitFilter._ignore = set()
-    log.LimitFilter._raised_messages = set()
-    log.LimitFilter._threshold = 5
-    log.LimitFilter._group_count = defaultdict(int)
+    pelican.log.LimitFilter._ignore = set()
+    pelican.log.LimitFilter._raised_messages = set()
+    pelican.log.LimitFilter._threshold = 5
+    pelican.log.LimitFilter._group_count = defaultdict(int)
 
 
 EXPECTED_DEBUG_ITER = 1
@@ -34,7 +36,7 @@ EXPECTED_INFOS = (1 * EXPECTED_INFO_ITER)
 EXPECTED_WARNING_ITER = 6
 EXPECTED_WARNINGS_MSG1 = (1 * EXPECTED_WARNING_ITER)
 EXPECTED_WARNINGS_MSG2 = (1 * EXPECTED_WARNING_ITER)
-PASSING_LIMIT_THRESHOLD = log.LimitFilter._threshold - 1  # NOQA
+PASSING_LIMIT_THRESHOLD = pelican.log.LimitFilter._threshold - 1  # NOQA
 EXPECTED_WARNINGS_MSG2_LIMIT = min(
     (1 * EXPECTED_WARNING_ITER),
     PASSING_LIMIT_THRESHOLD)
@@ -145,9 +147,104 @@ def restore_root_logger_to_python() -> logging.RootLogger.__class__:
     return a_root_logger_class
 
 
+def initialize_pelican_logger() -> logging.Logger.__class__:
+    # Python logging does root-reset as:
+    #    root = RootLogger(WARNING)
+    #    Logger.root = root
+    #    Logger.manager = Manager(Logger.root)
+    restore_root_logger_to_python()
+
+    # derived from pelican.log.__main__
+    test_console = rich.console.Console()
+    logging.setLoggerClass(pelican.log.FatalLogger)
+    logging.getLogger().__class__ = pelican.log.FatalLogger
+    target_level = logging.WARNING
+    pelican.log.init(
+        level=target_level,
+        fatal="",
+        name=None,
+        handler=rich.logging.RichHandler(console=test_console)
+    )
+    # pelican.log.FatalLogger.warnings_fatal = pelican.log.fatal.startswith("warning")
+    # pelican.log.FatalLogger.errors_fatal = bool(fatal)
+    # log_format: str = "%(message)s"
+    # logging.basicConfig(
+    #     level=target_level,
+    #     format=log_format,
+    #     datefmt="[%H:%M:%S]",
+    #     handlers=[pelican.log.init.handler] if pelican.log.init.handler else [],
+    # )
+    # logger = logging.getLogger(name)
+    # if target_level:
+    #     pelican.log.init.logger.setLevel(level)
+    # if pelican.log.init.logs_dedup_min_level:
+    #     pelican.log.LimitFilter.LOGS_DEDUP_MIN_LEVEL =
+    #         pelican.log.init.logs_dedup_min_level
+    test_logger = logger   # global variable inside pelican.__init__.logger
+    assert test_logger.__class__.__subclasses__() == []
+    return test_logger
+
+
 ##########################################################################
 #  Fixtures
 ##########################################################################
+@pytest.fixture(scope="function")
+def display_attributes_around_pelican_root_logger__fixture_func():
+    # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
+    print_logger("Pelican Root (before)", logging.root)
+    yield
+    print_logger("Pelican Root (after)", logging.root)
+
+
+@pytest.fixture(scope="function")
+def reset_root_logger_to_pelican__fixture_func():
+    """Undo any custom RootLogger"""
+    original_logger_class = logging.getLoggerClass()
+    console = rich.console.Console()
+    pelican.log.init(
+        level=logging.WARNING,
+        fatal="",
+        handler=pelican.log.RichHandler(console=console),
+        name=None,
+        logs_dedup_min_level=None
+    )
+    test_pelican_logger = pelican.logger  # access Pelican global `logger` variable
+    yield test_pelican_logger
+
+    logging.setLoggerClass(original_logger_class)
+
+
+@pytest.fixture(scope="function")
+def display_reset_root_logger_to_pelican__fixture_func(
+    display_attributes_around_python_root_logger__fixture_func
+):
+    original_logger_class = logging.getLoggerClass()
+    console = rich.console.Console()
+    pelican.log.init(
+        level=logging.WARNING,
+        fatal="",
+        handler=pelican.log.RichHandler(console=console),
+        name=None,
+        logs_dedup_min_level=None
+    )
+    test_pelican_logger = pelican.logger  # access Pelican global `logger` variable
+    yield test_pelican_logger
+
+    logging.setLoggerClass(original_logger_class)
+
+
+@pytest.fixture(scope="function")
+def new_pelican_logger(
+    reset_root_logger_to_pelican__fixture_func
+):
+    # At this point, it is a virgin Pelican __init__ startup,
+    # right after loading the logging module
+    # Correct error for an unused Logger
+    test_logger = logging.getLogger()
+
+    yield test_logger
+
+
 @pytest.fixture(scope="function")
 def display_attributes_around_python_root_logger__fixture_func():
     # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
@@ -616,7 +713,7 @@ class TestLogUninstalledLimit:
         with self._caplog.at_level(target_level):
             self._caplog.clear()
 
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -638,7 +735,7 @@ class TestLogUninstalledLimit:
                 EXPECTED_WARNINGS_MSG1 +
                 EXPECTED_WARNINGS_MSG2
             )
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -657,7 +754,7 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -676,7 +773,7 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -697,11 +794,11 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
-            assert self.count_logs("Log 3", logging.WARNING) == 0
+            assert self.count_logs("Log 3", logging.WARNING) == 1
 
     def test_exact_pattern(
         self,
@@ -715,7 +812,7 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -754,7 +851,7 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -776,7 +873,7 @@ class TestLogUninstalledLimit:
         with self._caplog.at_level(target_level):
             self._caplog.clear()
             # This pattern ignores out everything that has a word before ' log '
-            log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
 
             do_logging(test_log)
 
@@ -816,7 +913,7 @@ class TestLogUninstalledLimit:
         with (self._caplog.at_level(target_level)):
             self._caplog.clear()
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
 
             do_logging(test_log)
 
@@ -854,7 +951,7 @@ class TestLogUninstalledLimit:
             self._caplog.clear()
 
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
 
             do_logging(test_log)
 
@@ -898,8 +995,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -928,8 +1025,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -957,8 +1054,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -997,8 +1094,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1027,8 +1124,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1060,8 +1157,8 @@ class TestLogUninstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1106,6 +1203,516 @@ class TestLogInstalledLimit:
     def test_dataset_check_entire(
         self,
         capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.INFO
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        expected_total = (
+            EXPECTED_CRITICALS +
+            (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                WARNING_LIMIT_EMITTED
+            ) +
+            EXPECTED_ERRORS
+        )
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs() == expected_total
+
+    def test_dataset_all_another(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
+            )
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+
+    def test_dataset_filter_all_log(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs(level=logging.DEBUG) == 0
+
+    def test_dataset_all_log_warning(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2_LIMIT,
+            )
+
+    def test_dataset_all_log_filtered(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs("Log 3", logging.WARNING) == 1
+
+    def test_exact_pattern(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert self.count_logs("Log 3", logging.WARNING) == 1
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                EXPECTED_WARNINGS
+            )
+            assert (
+                self.count_logs(level=logging.ERROR) ==
+                EXPECTED_ERRORS
+            )
+            total_expected = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == total_expected
+
+    def test_exact_pattern_another_log_5(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by exact pattern"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+
+    def test_template_word(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by word template"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            # This pattern ignores out everything that has a word before ' log '
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG1
+            )
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            expected_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2
+            )
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+    def test_template_digit_one(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by digit template"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with (self._caplog.at_level(target_level)):
+            self._caplog.clear()
+            # This pattern ignores out everything that starts with `Log `
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+
+            do_logging(test_log)
+
+            assert self.count_logs(r"Log \\d", logging.WARNING) == 0
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            # expected_warnings = EXPECTED_WARNINGS_LIMIT - 1 + WARNING_LIMIT_EMITTED
+            expected_warnings = EXPECTED_WARNINGS
+            assert self.count_logs(level=logging.WARNING) == expected_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2 +
+                # WARNING_LIMIT_EMITTED +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+    def test_regex_template_digit_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter by digit template"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+
+            # This pattern ignores out everything that starts with `Log `
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs(r"Log \\d", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 - EXPECTED_WARNINGS_MSG1)
+            )
+            assert (
+                self.count_logs(r"Another log \d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+            total_warnings = (
+                EXPECTED_WARNINGS_MSG1 +
+                EXPECTED_WARNINGS_MSG2  # +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert self.count_logs(level=logging.WARNING) == total_warnings
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+            expected_total = (
+                EXPECTED_CRITICALS +
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS  # +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert self.count_logs() == expected_total
+
+    def test_filter_warnings_detect_debug_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                EXPECTED_WARNINGS_MSG1
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.DEBUG) == 0
+
+    def test_filter_warnings_detect_info_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                (EXPECTED_WARNINGS_MSG1 - 1),
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.INFO) == 0
+
+    def test_filter_warnings_detect_warning_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            expected_total = (
+                # (EXPECTED_WARNINGS_MSG1 - 1) +
+                (EXPECTED_WARNINGS_MSG1 - 0) +
+                # EXPECTED_WARNINGS_MSG2_LIMIT +
+                EXPECTED_WARNINGS_MSG2  # +
+                # WARNING_LIMIT_EMITTED
+            )
+            assert (
+                self.count_logs(level=logging.WARNING) ==
+                expected_total
+            )
+
+    def test_filter_warnings_detect_error_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert self.count_logs(level=logging.ERROR) == EXPECTED_ERRORS
+
+    def test_filter_warnings_detect_critical_only(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            assert (
+                self.count_logs(level=logging.CRITICAL) ==
+                EXPECTED_CRITICALS
+            )
+
+    def test_filter_warnings_detect_dataset_all(
+        self,
+        capture_log,
+        display_reset_root_logger_to_pelican__fixture_func,
+        new_pelican_logger
+    ):
+        """Filter, using all attributes"""
+        target_level = logging.WARNING
+        test_log = new_pelican_logger
+        test_log.setLevel(target_level)
+        with self._caplog.at_level(target_level):
+            self._caplog.clear()
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+
+            do_logging(test_log)
+
+            assert (
+                self.count_logs("Log \\d", logging.WARNING) ==
+                # (EXPECTED_WARNINGS_MSG1 - 1)
+                (EXPECTED_WARNINGS_MSG1 - 0)
+            )
+            assert (
+                self.count_logs("Another log \\d", logging.WARNING) ==
+                # EXPECTED_WARNINGS_MSG2_LIMIT
+                EXPECTED_WARNINGS_MSG2
+            )
+            # total log buffer dataset check
+            expected_total = (
+                EXPECTED_CRITICALS +
+                # EXPECTED_WARNINGS_LIMIT +
+                EXPECTED_WARNINGS +
+                EXPECTED_ERRORS
+            )
+            assert self.count_logs() == expected_total
+
+
+class TestLogLimitPatternInfoLevel:
+    """Pattern Check; FatalLogger(LimitLogger); Info level"""
+    # What exact area of level am I testing for? Logger.level or Limit.level?
+    # This here is "Limit" so focus on Limit level then
+    def count_logs(self, pattern=None, level=None):
+        count = 0
+        for logger_name, log_lvl, log_msg in self._caplog.record_tuples[:]:
+            if (
+                (level is None or log_lvl == level) and
+                (pattern is None or re.match(pattern, log_msg))
+            ):
+                print(f'name: {logger_name} lvl: {log_lvl} msg: "{log_msg}"')
+                count = count + 1
+        return count
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_dataset_check_entire(
+        self,
+        capture_log,
         display_reset_root_logger_to_python__fixture_func,
         new_test_logger
     ):
@@ -1125,7 +1732,7 @@ class TestLogInstalledLimit:
         with self._caplog.at_level(target_level):
             self._caplog.clear()
 
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1147,7 +1754,7 @@ class TestLogInstalledLimit:
                 EXPECTED_WARNINGS_MSG1 +
                 EXPECTED_WARNINGS_MSG2
             )
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1166,7 +1773,7 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1185,7 +1792,7 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1206,11 +1813,11 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
-            assert self.count_logs("Log 3", logging.WARNING) == 0
+            assert self.count_logs("Log 3", logging.WARNING) == 1
 
     def test_exact_pattern(
         self,
@@ -1224,7 +1831,7 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1263,7 +1870,7 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))  # NOOP
 
             do_logging(test_log)
 
@@ -1285,7 +1892,7 @@ class TestLogInstalledLimit:
         with self._caplog.at_level(target_level):
             self._caplog.clear()
             # This pattern ignores out everything that has a word before ' log '
-            log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
 
             do_logging(test_log)
 
@@ -1325,7 +1932,7 @@ class TestLogInstalledLimit:
         with (self._caplog.at_level(target_level)):
             self._caplog.clear()
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
 
             do_logging(test_log)
 
@@ -1363,7 +1970,7 @@ class TestLogInstalledLimit:
             self._caplog.clear()
 
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
 
             do_logging(test_log)
 
@@ -1407,8 +2014,8 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1437,15 +2044,13 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
-            assert (
-                self.count_logs("Log \\d", logging.WARNING) ==
-                (EXPECTED_WARNINGS_MSG1 - 1),
-            )
+            assert self.count_logs("Log \\d", logging.WARNING) == \
+                (EXPECTED_WARNINGS_MSG1 - 1)
             assert (
                 self.count_logs("Another log \\d", logging.WARNING) ==
                 # EXPECTED_WARNINGS_MSG2_LIMIT
@@ -1466,8 +2071,8 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1506,8 +2111,8 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1536,8 +2141,8 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1569,8 +2174,8 @@ class TestLogInstalledLimit:
         test_log.setLevel(target_level)
         with self._caplog.at_level(target_level):
             self._caplog.clear()
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(test_log)
 
@@ -1595,26 +2200,6 @@ class TestLogInstalledLimit:
 
 
 class TestLogLimitPatternInfoLevel:
-    def setUp(self):
-        super().setUp()
-        self.logger = logging.getLogger(__name__)
-        dump_log(self.logger)
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        # Check level of nested logHandlers/logFilters
-        # We do not want negotiated getEffectiveLevel() here
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        self.assertEqual(0, self.original_log_level, "log level is no longer NOTSET.")
-
-    def tearDown(self):
-        _reset_limit_filter()
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
-
     @contextmanager
     def reset_logger(self):
         try:
@@ -1628,7 +2213,7 @@ class TestLogLimitPatternInfoLevel:
         self.logger.setLevel(logging.INFO)
 
         with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
 
             do_logging(self)
 
@@ -1669,7 +2254,7 @@ class TestLogLimitPatternInfoLevel:
 
         with self.reset_logger():
             # This pattern ignores out everything that has a word before ' log '
-            log.LimitFilter._ignore.add((logging.WARNING, r"\w log "))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, r"\w log "))
 
             do_logging(self)
 
@@ -1717,7 +2302,7 @@ class TestLogLimitPatternInfoLevel:
 
         with self.reset_logger():
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
 
             do_logging(self)
 
@@ -1758,8 +2343,8 @@ class TestLogLimitPatternInfoLevel:
         self.logger.setLevel(logging.INFO)  # presumptive default level
 
         with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(self)
 
@@ -1808,26 +2393,6 @@ class TestLogLimitPatternInfoLevel:
 
 
 class TestLogLimitPatternDebugLevel:
-    def setUp(self):
-        super().setUp()
-        self.logger = logging.getLogger(__name__)
-        dump_log(self.logger)
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        # Check level of nested logHandlers/logFilters
-        # We do not want negotiated getEffectiveLevel() here
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        self.assertEqual(0, self.original_log_level, "log level is no longer NOTSET.")
-
-    def tearDown(self):
-        _reset_limit_filter()
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
-
     @contextmanager
     def reset_logger(self):
         try:
@@ -1841,7 +2406,7 @@ class TestLogLimitPatternDebugLevel:
         self.logger.setLevel(logging.DEBUG)
 
         with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
 
             do_logging(self)
 
@@ -1887,7 +2452,7 @@ class TestLogLimitPatternDebugLevel:
 
         with self.reset_logger():
             # This pattern ignores out everything that has a word before ' log '
-            log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "\\w log "))
 
             do_logging(self)
 
@@ -1936,7 +2501,7 @@ class TestLogLimitPatternDebugLevel:
 
         with self.reset_logger():
             # This pattern ignores out everything that starts with `Log `
-            log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log \\d"))
 
             do_logging(self)
 
@@ -1984,8 +2549,8 @@ class TestLogLimitPatternDebugLevel:
         self.logger.setLevel(logging.DEBUG)  # presumptive default level
 
         with self.reset_logger():
-            log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
-            log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Log 3"))
+            pelican.log.LimitFilter._ignore.add((logging.WARNING, "Another log %s"))
 
             do_logging(self)
 
@@ -2033,128 +2598,3 @@ class TestLogLimitPatternDebugLevel:
                 EXPECTED_ERRORS
             )
             self.assertEqual(expected_total, self.handler.count_logs())
-
-
-class TestLogLimitThreshold:
-
-    def setUp(self):
-        super().setUp()
-        print_logger("pre-setUp: ", logging.Logger)  # NOQA
-        self.logger = logging.getLogger(__name__)
-        print_logger("pre-basicConfig: ", self.logger)
-        logging.basicConfig(level=logging.DEBUG)
-        print_logger("post-basicConfig: ", self.logger)
-        print("logging.getLoggerClass(): ", logging.getLoggerClass())
-        print("logging.getLogRecordFactory(): ", logging.getLogRecordFactory())
-        self.assertEqual(logging.WARNING, self.logger.getEffectiveLevel())
-        self.assertEqual(logging.NOTSET, self.logger.level)
-        # Add a custom counter of log output
-        self.handler = LogCountHandler()
-        self.logger.addHandler(self.handler)
-        self.logger.setLevel(logging.NOTSET)
-        self.assertEqual(logging.NOTSET, self.handler.level)
-        self.assertEqual(
-            logging.WARNING,
-            self.logger.getEffectiveLevel(),
-            "log level is no longer effective level.",
-        )
-
-        self.original_log_level = self.logger.level
-        # This level should be 0 (logging.NOTSET); crap out if otherwise
-        print_logger("post-basicConfig: ", self.logger)
-        dump_log(self.logger)
-
-    def tearDown(self):
-        self.logger.setLevel(self.original_log_level)
-        self.logger.removeHandler(self.handler)
-        del self.handler
-        del self.logger
-        super().tearDown()
-
-    def test_hit_repeating_errors(self):
-        logger_name = __name__
-        log.init(
-            level=logging.INFO,
-            name=logger_name,
-            logs_dedup_min_level=logging.CRITICAL
-        )
-        test_logger = self.logger
-
-        with self.assertLogs(logger=test_logger, level=logging.WARNING) as test_log:
-            do_logging(self)
-
-        actual_flood_count = 0
-        for rec in test_log.records:
-            if rec.levelno == logging.ERROR:
-                if rec.name == logger_name:
-                    if rec.message == "Flooding error repeating":
-                        actual_flood_count = actual_flood_count + 1
-        self.assertEqual(1, actual_flood_count)
-
-    def test_miss_limit_threshold(self):
-        logger_name = __name__
-        log.init(
-            level=logging.WARNING,
-            name=logger_name,
-            logs_dedup_min_level=logging.ERROR
-        )
-        test_logger = self.logger
-        original_threshold = log.LimitFilter._threshold
-        log.LimitFilter._threshold = 7
-
-        with self.assertLogs(logger=test_logger, level=logging.WARNING) as test_log:
-            do_logging(self)
-
-        found = False
-        for rec in test_log.records[:]:
-            if "generic message" in rec.message:
-                found = True
-        self.assertFalse(found, "generic message not in log; threshold failed")
-
-        log.LimitFilter._threshold = original_threshold
-
-    def test_hit_limit_threshold(self):
-        logger_name = __name__
-        log.init(
-            level=logging.WARNING,
-            name=logger_name,
-            logs_dedup_min_level=logging.ERROR
-        )
-        test_logger = self.logger
-        original_threshold = log.LimitFilter._threshold
-        log.LimitFilter._threshold = 6
-
-        with self.assertLogs(logger=test_logger, level=logging.WARNING) as test_log:
-            do_logging(self)
-
-        found = False
-        for rec in test_log.records[:]:
-            if "generic message" in rec.message:
-                found = True
-        self.assertTrue(found, "generic message not in log; threshold failed")
-
-        log.LimitFilter._threshold = original_threshold
-
-    def test_over_the_limit_threshold(self):
-        logger_name = __name__
-        log.init(
-            level=logging.WARNING,
-            name=logger_name,
-            logs_dedup_min_level=logging.ERROR
-        )
-        test_logger = self.logger
-        print_logger("before: ", test_logger)
-        original_threshold = log.LimitFilter._threshold
-        log.LimitFilter._threshold = 5
-
-        with self.assertLogs(logger=test_logger, level=logging.WARNING) as test_log:
-            do_logging(self)
-
-        found = False
-        for rec in test_log.records[:]:
-            print('rec.message: "', rec.message, '"')
-            if "generic message" in rec.message:
-                found = True
-        self.assertTrue(found, "generic message not in log; threshold failed")
-
-        log.LimitFilter._threshold = original_threshold

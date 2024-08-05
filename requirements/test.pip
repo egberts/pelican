@@ -11,3 +11,4 @@ BeautifulSoup4
 lxml
 typogrify
 filelock
+logging_tree

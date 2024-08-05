@@ -3,18 +3,17 @@
 # Tester: pytest
 #
 import contextlib
+import filelock
 import locale
 import logging
 import os  # os.path is being discontinued; use pathlib.Path
+import pytest
 import shutil
 import sys
 from pathlib import Path
 
-import filelock
-import pytest
 
-
-@pytest.fixture(scope="function", autouse=True)
+@pytest.fixture(scope="function", autouse=False)
 def test_log(request):
     # Here logging is used, you can use whatever you want to use for logs
     logging.info(f"Test '{request.node.nodeid}' STARTED")
@@ -28,7 +27,7 @@ def test_log(request):
 @pytest.fixture(scope="function", autouse=True)
 def test_log_level_warning(request):
     """logging level defaults to logging.WARNING"""
-    logger = logging.getLogger("conftest.py")
+    logger = logging.getLogger()
     # We do not want to know "highest" setted level of the Logger chain.
     # Therefore, do not use logger.getEstablishedLevel() here
     original_log_level = logger.level

@@ -25,11 +25,14 @@ DEFAULT_THEME = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "themes", "notmyidea"
 )
 DEFAULT_CONFIG = {
-    "PATH": os.curdir,
+    "PATH": os.path.normpath(
+        os.path.dirname(os.path.abspath(__file__)) +
+        "/../../../content"
+    ),
     "ARTICLE_PATHS": [""],
-    "ARTICLE_EXCLUDES": [],
+    "ARTICLE_EXCLUDES": ["pages"],
     "PAGE_PATHS": ["pages"],
-    "PAGE_EXCLUDES": [],
+    "PAGE_EXCLUDES": [""],
     "THEME": DEFAULT_THEME,
     "OUTPUT_PATH": "output",
     "READERS": {},
@@ -45,6 +48,7 @@ DEFAULT_CONFIG = {
     "AUTHOR_FEED_ATOM": "feeds/{slug}.atom.xml",
     "AUTHOR_FEED_RSS": "feeds/{slug}.rss.xml",
     "TRANSLATION_FEED_ATOM": "feeds/all-{lang}.atom.xml",
+    "FEED_DOMAIN": "",
     "FEED_MAX_ITEMS": 100,
     "RSS_FEED_SUMMARY_ONLY": True,
     "FEED_APPEND_REF": False,
@@ -148,7 +152,7 @@ DEFAULT_CONFIG = {
     "SUMMARY_END_SUFFIX": "…",
     "SUMMARY_MAX_LENGTH": 50,
     "PLUGIN_PATHS": [],
-    "PLUGINS": None,
+    "PLUGINS": [],
     "PYGMENTS_RST_OPTIONS": {},
     "TEMPLATE_PAGES": {},
     "TEMPLATE_EXTENSIONS": [".html"],
@@ -215,6 +219,7 @@ def canonicalize_module_name(module_name: str) -> str:
     canonical_module_name = canonical_module_name.replace("__", "_")
     canonical_module_name = canonical_module_name.replace("__", "_")
     canonical_module_name = canonical_module_name.replace("__", "_")
+    canonical_module_name = canonical_module_name.replace("__", "_")
 
     if platform.system() == "Windows":
         if canonical_module_name.upper() in FORBIDDEN_WINDOWS_FILENAME:
@@ -246,6 +251,7 @@ def validate_module_name(module_name: str) -> bool:
     return True
 
 
+# PEP-0451 various importlib procedure got replaced
 def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     """
     Loads the Python-syntax file as a module for immediate variable access and
@@ -316,12 +322,9 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     :raises ValueError: incorrect value or invalid character in a string given
     """
 
-    # If this module_name remains blank after parsing, it is a fatal condition.
-    module_name: str = ""
-
     if name is None and (path is None or path == ""):
         err_str = "At least one argument is required."
-        logger.fatal(err_str)
+        logger.critical(err_str)
         raise SyntaxError(err_str)
 
     # Lots of interdependencies between name and path, try and get both values
@@ -336,14 +339,14 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
     # Enforce strong typing of argument; str type for module name
     elif not isinstance(name, str):
         err_msg = f"argument {name.__str__()} is not a 'str' type."
-        logger.fatal(err_msg)
+        logger.critical(err_msg)
         raise TypeError(err_msg)
     # Pelican constraint for module name is not to allow 'period' symbol
     # due to lack of module nesting support.
     # This is a given Pelican design issue to support pelicanconf reloadability.
     elif "." in name:
         err_msg = f"Period symbol is not allowed in module {name} name."
-        logger.fatal(err_msg)
+        logger.critical(err_msg)
         raise ValueError(err_msg)
     elif name == "":
         # Do we want to see if empty name= can be "autofilled"?
@@ -357,7 +360,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
 
     path_is_supplied_not_defaulted = False
     # os.getcwd() gets us an absolute path, relative is needed here.
-    file_path: Path = Path(".")
+    conf_file_path: Path = Path(".")
 
     # Now check for path
     if path is not None:
@@ -366,13 +369,13 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
             err_msg = (
                 f"Argument {path.__str__()} is not a 'str' nor a 'pathlib.Path' type."
             )
-            logger.fatal(err_msg)
+            logger.critical(err_msg)
             raise TypeError(err_msg)
         else:
             # It might be a directory, or it might be a file but not determined here.
             # Don't check path any further, go down to mixed-argument logic block
             path_is_supplied_not_defaulted = True
-            file_path = Path(path)
+            conf_file_path = Path(path)
 
     # Now we got values of both the name and the path ready for validation
     # Of course, if both are inferred, we cannot do anything so SyntaxError that too
@@ -383,10 +386,10 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
 
     # Treat "", "." or None as the same as absolute form of current working directory
 
-    abs_file_path = file_path.absolute()
+    abs_file_path = conf_file_path.absolute()
     # file_path is already a get current working directory
-    logger.debug(f"{file_path} is inferred as current working directory.")
-    if not file_path.exists():
+    logger.debug(f"{conf_file_path} is inferred as current working directory.")
+    if not conf_file_path.exists():
         err_msg = f"File '{abs_file_path!s}' is not found."
         logger.error(err_msg)
         raise FileNotFoundError(err_msg)
@@ -395,28 +398,28 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         logger.error(err_msg)
         raise PermissionError(err_msg)
 
-    if file_path.is_dir():
+    if conf_file_path.is_dir():
         # path being a directory is only supported if module name is explicit
         if guess_my_module_name:
             raise IsADirectoryError(
                 "Supply missing module name; can only extract module name from a "
-                f"file path; not from an implied '{file_path}' directory."
+                f"file path; not from an implied '{conf_file_path}' directory."
             )
         logger.debug(f"Inferred path is: {abs_file_path}")
         # valid directory in file_path
-    elif file_path.is_file():
+    elif conf_file_path.is_file():
         # Valid file type and valid file_path
         if guess_my_module_name:
-            possible_module_name = file_path.stem
+            possible_module_name = conf_file_path.stem
         else:
             possible_module_name = name
     else:  # path is neither a file nor a directory
-        err_msg = f"File {file_path} is not a file nor a directory."
+        err_msg = f"File {conf_file_path} is not a file nor a directory."
         logger.error(err_msg)
         raise OSError(err_msg)
 
-    absolute_filespec = file_path.absolute()
-    resolved_absolute_filespec = file_path.resolve()
+    absolute_filespec = conf_file_path.absolute()
+    resolved_absolute_filespec = conf_file_path.resolve()
 
     # We got a valid module name with a valid directory or file path, or
     # we got a valid explicit file path to a module (but no module name)
@@ -447,15 +450,17 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
             f"system '{module_name}' module; it may be an "
             "user-defined or a built-in."
         )
-        # following logger.fatal is used as-is by test_settings_module.py unit test
-        logger.fatal(err_str)
+        # following logger.critical is used as-is by test_settings_module.py unit test
+        logger.critical(err_str)
         raise SystemError(err_str)
     # module_name is valid at this point
 
     try:
         # Using Python importlib, find the module using a full file path
         # specification and its filename and return this Module instance
-        module_spec = importlib.util.spec_from_file_location(module_name, file_path)
+        module_spec = importlib.util.spec_from_file_location(
+            module_name, conf_file_path
+        )
         logger.debug(f"ModuleSpec '{module_name}' obtained from {absolute_filespec}.")
 
     except ImportError:
@@ -476,7 +481,7 @@ def load_source(name: str, path: str | Path | None) -> ModuleType | None:
         # With the ModuleSpec object, we can get the
         module_type = importlib.util.module_from_spec(module_spec)
     except ImportError:
-        logger.fatal(
+        logger.critical(
             "Loader that defines exec_module() must also define create_module()"
         )
         raise ImportError from ImportError
@@ -571,13 +576,13 @@ def read_settings(
              settings has been applied over its read settings.
     :rtype: Settings
     """
-    settings = override or {}
+    settings: Settings = override or {}
 
     if path:
-        settings = dict(get_settings_from_file(path, reload), **settings)
+        settings: Settings = dict(get_settings_from_file(path, reload), **settings)
 
     if settings:
-        settings = handle_deprecated_settings(settings)
+        settings: Settings = handle_deprecated_settings(settings)
 
     if path:
         # Make relative paths absolute
@@ -602,8 +607,8 @@ def read_settings(
                 getabs(pluginpath) for pluginpath in settings["PLUGIN_PATHS"]
             ]
 
-    settings = dict(copy.deepcopy(DEFAULT_CONFIG), **settings)
-    settings = configure_settings(settings, reload)
+    settings: Settings = dict(copy.deepcopy(DEFAULT_CONFIG), **settings)
+    settings: Settings = configure_settings(settings, reload)
 
     # This is because there doesn't seem to be a way to pass extra
     # parameters to docutils directive handlers, so we have to have a
@@ -624,7 +629,7 @@ def get_settings_from_module(module: Optional[ModuleType] = None) -> Settings:
     :type module: ModuleType | None
     :return: Returns a dictionary of Settings found in that Python module.
     :rtype: Settings"""
-    context = {}
+    context: Settings = {}
     if module is not None:
         context.update((k, v) for k, v in inspect.getmembers(module) if k.isupper())
     return context
@@ -655,7 +660,7 @@ def get_settings_from_file(path: str, reload: bool) -> Settings:
 def get_jinja_environment(settings: Settings) -> Settings:
     """Sets the environment for Jinja"""
 
-    jinja_env = settings.setdefault(
+    jinja_env: Settings = settings.setdefault(
         "JINJA_ENVIRONMENT", DEFAULT_CONFIG["JINJA_ENVIRONMENT"]
     )
 
@@ -671,11 +676,11 @@ def _printf_s_to_format_field(printf_string: str, format_field: str) -> str:
     """Tries to replace %s with {format_field} in the provided printf_string.
     Raises ValueError in case of failure.
     """
-    TEST_STRING = "PELICAN_PRINTF_S_DEPRECATION"
-    expected = printf_string % TEST_STRING
+    test_string = "PELICAN_PRINTF_S_DEPRECATION"
+    expected = printf_string % test_string
 
     result = printf_string.replace("{", "{{").replace("}", "}}") % f"{{{format_field}}}"
-    if result.format(**{format_field: TEST_STRING}) != expected:
+    if result.format(**{format_field: test_string}) != expected:
         raise ValueError(f"Failed to safely replace %s with {{{format_field}}}")
 
     return result
@@ -1012,7 +1017,7 @@ def configure_settings(settings: Settings, reload: None | bool = False) -> Setti
             settings[key] = settings[key].lower()
 
     # set defaults for Jinja environment
-    settings = get_jinja_environment(settings)
+    settings: Settings = get_jinja_environment(settings)
 
     # standardize strings to lists
     for key in ["LOCALE"]:

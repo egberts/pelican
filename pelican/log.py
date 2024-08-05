@@ -122,6 +122,7 @@ class FatalLogger(LimitLogger):
             raise RuntimeError("Error encountered")
 
 
+print("print getLoggerClass(original): ", logging.getLoggerClass())
 logging.setLoggerClass(FatalLogger)
 # force root logger to be of our preferred class
 logging.getLogger().__class__ = FatalLogger
@@ -136,6 +137,18 @@ def init(
     name=None,
     logs_dedup_min_level=None,
 ):
+    if level is not None and not isinstance(level, int) and not isinstance(level, str):
+        raise TypeError("level= only takes int type or str type.")
+    if not isinstance(fatal, str):
+        raise TypeError("fatal= only takes str type.")
+    print("handler: ", str(handler))
+    print("handler.__class__: ", str(handler.__class__))
+    if handler is not None and not issubclass(handler.__class__, logging.Handler):
+        raise TypeError("handlers= only takes logging.Handler type or None value.")
+    if name is not None:
+        if not isinstance(name, str):
+            raise TypeError("name= only takes str type or None value.")
+
     FatalLogger.warnings_fatal = fatal.startswith("warning")
     FatalLogger.errors_fatal = bool(fatal)
 
@@ -161,14 +174,3 @@ def log_warnings():
     logging.captureWarnings(True)
     warnings.simplefilter("default", DeprecationWarning)
     init(logging.DEBUG, name="py.warnings")
-
-
-if __name__ == "__main__":
-    init(level=logging.DEBUG, name=__name__)
-
-    root_logger = logging.getLogger(__name__)
-    root_logger.debug("debug")
-    root_logger.info("info")
-    root_logger.warning("warning")
-    root_logger.error("error")
-    root_logger.critical("critical")

@@ -35,19 +35,24 @@ import pytest
 # Always check for `.level` attribute in int type using logging.Logger class
 
 
-def log_print_tree(title=""):
+def log_print_tree(title="") -> None:
     print(f"{title}:\n")
     logging_tree.printout()
     print("\n")
 
 
 def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
-    print(f"\nLogger fields for {title}")
+    print(f"\n\nLogger fields for '{title}':")
     print(f"{title}: Logger: ", this_logger)
     if hasattr(this_logger, "name"):
         print(f"{title}: Name: {this_logger.name}")
     else:
         print("Name: None")
+    if hasattr(this_logger, "level"):
+        level_name = logging.getLevelName(this_logger.level)
+        print(f"{title}: Level: {level_name} ({this_logger.level})")
+    else:
+        print("Level: None")
     print(f"{title}: Logger.manager: ", this_logger.manager)
     print(f"{title}: Logger.manager.loggerClass: ", this_logger.manager.loggerClass)
     print(f"{title}: Logger.manager.root: ", this_logger.manager.root)
@@ -70,7 +75,7 @@ def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
         print(f"{title}: Handler.level: ", this_logger.level)
         print(f"{title}: Handler.filters: ", this_logger.filters)
         if hasattr(this_logger.handlers, "formatter"):
-            print(f"{title}: Handler.formatter: ", this_logger.formatter)
+            print(f"{title}: Handler.formatter: ", this_logger.formatter)  # NOQA
         else:
             print(f"{title}: handlers.formatter: None")
     else:
@@ -78,7 +83,7 @@ def print_logger(title: str, this_logger: logging.Logger) -> logging.Logger:
     return this_logger.manager.root
 
 
-def reset_logging_handlers():
+def reset_logging_handlers() -> None:
     """Clear out all classes of FatalLogging, setuptool.logging, ..."""
     # logging.basicConfig(force=True) only works AFTER instantiating
     #   the NON-ROOT logging.getLogger(), hence the need for this function
@@ -98,8 +103,95 @@ def reset_logging_handlers():
         logger.propagate = True
 
 
+def all_subclasses(cls) -> set:
+    return set(cls.__subclasses__()).union(
+        [s for c in cls.__subclasses__() for s in all_subclasses(c)])
+
+
+def restore_root_logger_to_python() -> logging.RootLogger.__class__:
+    # Python logging does root-reset as:
+    #    root = RootLogger(WARNING)
+    #    Logger.root = root
+    #    Logger.manager = Manager(Logger.root)
+
+    # But there is no way to save the manager, just to create a new Manager()
+    # But there is no way to save the handlers, just to create a new Handlers()
+    previous_logger_subclass = logging.getLoggerClass()
+    # Need to ascertain that root is literally a RootLogger
+    # and not a subclass of any
+    assert previous_logger_subclass.__subclasses__() == []
+    # previous_manager = logging.Manager(logging.Logger.root)
+    a_root_logger_class = logging.getLoggerClass().root.__class__
+    assert issubclass(previous_logger_subclass, previous_logger_subclass)
+    native_root_logger_class = logging.RootLogger
+
+    logging.setLoggerClass(native_root_logger_class)
+    # force Rootlogger to be of our preferred class for future instantiation
+    # Undo Pelican's forced FatalLogger root class
+    logging.getLogger().__class__ = native_root_logger_class
+
+    # Blow away all the 38+ loggers outside of Pelican
+    logging.root.manager.loggerDict = {}
+    logging.root.level = logging.WARNING
+    return a_root_logger_class
+
+
+##########################################################################
+#  Fixtures
+##########################################################################
 @pytest.fixture(scope="function")
-def log_class_virgin():
+def display_attributes_around_python_root_logger__fixture_func():
+    # FACT: logging.getLoggerClass().root.__class__ is .getLogger() instance
+    print_logger("root (before)", logging.root)
+    yield
+    print_logger("root (after)", logging.root)
+
+
+@pytest.fixture(scope="function")
+def reset_root_logger_to_python__fixture_func():
+    """Undo any custom RootLogger"""
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def display_reset_root_logger_to_python__fixture_func(
+    display_attributes_around_python_root_logger__fixture_func
+):
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+    # logging.RootLogger.root.__class__ == previous_root_logger_class
+
+
+@pytest.fixture(scope="function")
+def reset_root_logger_to_python__fixture_func():
+    old_root_logger = restore_root_logger_to_python()
+
+    yield
+
+    logging.setLoggerClass(old_root_logger)
+
+
+@pytest.fixture(scope="function")
+def init_logger_display_attributes_before_after__fixture_func(
+
+):
+    this_log_class = logging.getLogger()
+    print_logger("Logger (before)", this_log_class)
+    yield this_log_class
+    print_logger("Logger (after)", this_log_class)
+
+
+@pytest.fixture(scope="function")
+def restore_logger_python(
+    init_logger_display_attributes_before_after__fixture_func
+):
     """Undo any custom RootLogger"""
     #previous_logger_class = logging.getLoggerClass()
     #previous_root_logger_class = logging.getLoggerClass().root.__class__
@@ -114,197 +206,63 @@ def log_class_virgin():
     #yield native_root_logger_class
 
     #logging.setLoggerClass(previous_logger_class)
-
-
-@pytest.fixture(scope="function")
-def logger_attributes_before_after__fixture_func(log_class_virgin):
-    test_log = print_logger("Logger (before)", logging.Logger)
-    yield test_log
-    print_logger("Logger (after)", logging.Logger)
-
-
-@pytest.fixture(scope="function")
-def log_class_root_virgin():
-    """Undo any custom RootLogger"""
-    previous_logger_class = logging.getLoggerClass()
-    previous_root_logger_class = logging.getLoggerClass().root.__class__
-    native_root_logger_class = logging.RootLogger
-    logging.setLoggerClass(native_root_logger_class)
-    # force Rootlogger to be of our preferred class for future instantiation
-    # Undo Pelican's forced FatalLogger root class
-    logging.getLogger().__class__ = native_root_logger_class
-    # Blow away all the 38+ loggers outside of Pelican
-    logging.root.manager.loggerDict = {}
-
-    yield native_root_logger_class
-
-    logging.setLoggerClass(previous_logger_class)
-
-
-@pytest.fixture(scope="function")
-def root_logger_attributes_before_after__fixture_func(
-    logger_attributes_before_after__fixture_func,
-    log_class_root_virgin
-):
-    root_log = print_logger("root (before)", logging.Logger.root)
-    yield root_log
-    print_logger("root (after)", logging.Logger.root)
-
-
-@pytest.fixture(scope="function")
-def UNTESTED_log_class_original__fixture_func(
-    log_class_root_virgin, root_logger_attributes_before_after__fixture_func
-):
-    """Restore a root instance of a virgin logging.Logger class"""
-
-    # logging.basicConfig(force=True) does NOT work on the root logger
-    reset_logging_handlers()
-    assert logging.getLogger().handlers == []
-
-    # Prove that we got virgin "ROOT" logging again
-    test_log = root_logger_attributes_before_after__fixture_func
-    print("test_log: ", id(test_log), test_log)
-
-    # first, replace the Root logging class
-    logging.getLogger().__class__ = logging.RootLogger
-    assert logging.RootLogger == logging.root.__class__
-
-    # Then set the RootLogger default to WARNING
-    logging.root = logging.RootLogger(level=logging.WARNING)
-    assert "<RootLogger root (WARNING)>" == str(logging.root)
-
-    assert logging.getLogger().name == "root"
-    assert not logging.getLogger().hasHandlers()
-    assert logging.getLogger().propagate
-    assert logging.getLogger().handlers == []
-    assert logging.getLogger().filters == []
-    assert logging.getLogger().parent is None
-    # There is no "level" in root logger.
-
-    logging.root.manager.loggerDict = {}
-    assert logging.root.manager.loggerDict == {}
-
-    assert "<class 'logging.RootLogger'>" == str(logging.getLogger().root.__class__)
-
-    # Defer this instantiation of a Logger class toward the next fixture
-
-    yield
-
-    reset_logging_handlers()
-    print(
-        "\n3 logging.getLogger().root.__class__: ", logging.getLogger().root.__class__
-    )
-
-
-@pytest.fixture(scope="function")
-def UNTESTED_instantiate_logger_class_original__fixture_func(
-    UNTESTED_log_class_original__fixture_func):
-    """First step to instantiating a Logger class"""
-    assert logging.root.manager.loggerDict == {}
-
-    # Make sure there is no root logger, like Pelican FatalLogging
-    assert logging.RootLogger == logging.Logger.root.__class__
-    assert type == logging.Logger.__class__
-    # this is the stage after 'import logging' (except for logging.Manager)
-    assert logging.RootLogger == logging.getLogger().__class__
-
-    # extraneous asserts?
-    assert logging.RootLogger == logging.root.__class__
-    assert logging.root.manager.loggerDict == {}
-
-    # logging.basicConfig(force=True) does NOT work on the root logger
-    # logging.basicConfig(force=True) only works AFTER instantiating logging.getLogger()
-
-    # Make sure it is 'logging.Logger()' class before instantiation
-    # TODO: What assert can I use here at this point after RootLogger restoration?
-
-    # the instantiation stage of Logger()
-    # TODO: Somehow, getLogger() is pulling in pelican.log.fatalLogger instead of
-    #  rootLogger() here.  logging.manager.getLogger(), that is who.
-    #  more specifically, logging.root.manager.loggerDict[]
-    #  PyCharm is also top-hooking Logger class from
-    #   /opt/pycharm/pycharm-community-2023.1/plugins/python-ce/helpers/typeshed/stdlib/logging/__init.pyi
-    #  PyCharm logging also subclass logging.Logger via
-    #    /usr/lib/python3.11/logging/__init__.py
-    assert logging.getLogger(__name__).__class__ == logging.Logger
-    logging.basicConfig(level=logging.WARNING, force=True)
-    assert logging.getLogger(__name__).__class__ == logging.Logger
-    test_logger: logging.Logger = logging.getLogger(__name__)
-    assert logging.getLogger(__name__).__class__ == logging.Logger
-
-    assert isinstance(test_logger, logging.Logger)
-
-    # It is interesting to note that `name=` in logging.getLogger can look up
-    # previous instantiations of Logger subclasses and classes.
-    print("test_logger.__class__: ", test_logger.__class__)
-    print(
-        "logging.getLogger(__name__).__class__: ", logging.getLogger(__name__).__class__
-    )
-    assert test_logger.__class__ == logging.getLogger(__name__).__class__
-    print("test_logger.__class__: ", test_logger.__class__)
-
-    # logging.setLoggerClass(logging.Logger)
-
-    assert logging.getLogger(__name__).__class__ == logging.Logger
-    assert str(logging.getLogger(__name__)) == "<Logger root (WARNING)>"
-
-    # CRITICAL: Newly-created logging.Logger class are always initialized at
-    # level NOTSET; still logs the WARNINGs or higher (starts
-    # filtering at INFO or lower)
-    assert logging.NOTSET == test_logger.level
-    assert logging.WARNING == test_logger.getEffectiveLevel()
-    assert (
-        logging.getLoggerClass(__name__).root.__class__
-        == logging.RootLogger(logging.WARNING).__class__
-    )
-    # basicLogging(level=) changes levels for both
-
-    print("3 logger.root.manager.loggerDict[]: ", logging.root.manager.loggerDict)
-    yield test_logger
-
-    # deleting a logging.Logger class is not permanent, permanent but do it anyway
-    # hence, restore things back to the way it were before next unit test.
-    test_logger.setLevel(logging.NOTSET)
-    assert logging.WARNING == test_logger.getEffectiveLevel()
-
-
-@pytest.fixture(scope="function")
-def UNTESTED_instantiate_logger_class_pelican__fixture_func(
-    UNTESTED_log_class_original__fixture_func):
-    """First step to instantiating a Logger class"""
-    # Make sure there is no root logger, like Pelican FatalLogging
-    assert logging.RootLogger == logging.Logger.root.__class__
-    assert type == logging.Logger.__class__
-    # this is the stage after 'import logging'
-    # assert pelican.log.FatalLogger == logging.getLogger().__class__
-
-    # CRITICAL: Newly-created logging.Logger class are always initialized at
-    # level NOTSET; still logs the WARNINGs or higher (starts
-    # filtering at INFO or lower)
-    # assert logging.NOTSET == test_log.level
-    # assert logging.WARNING == test_log.getEffectiveLevel()
-    # basicLogging(level=) changes levels for both
-
-    # deleting a logging.Logger class is not permanent, permanent but do it anyway
-    # hence, restore things back to the way it were before next unit test.
-    # test_log.setLevel(logging.NOTSET)
-    # assert logging.WARNING == test_log.getEffectiveLevel()
-
-
-# A special `logging.getLoggerClass()` is passed to the `TestLogBasic`
-# ensuring that the original `logger` is used here (and not this file):
-#### class TestLogBasic(logging.getLoggerClass()):
+    pass
 
 
 class TestLogBasic:
 
-    def test_current_root(self):
+    def test_logging_tree(self):
         print(logging_tree.printout())
 
-    def test_init_root(self, log_class_root_virgin):
+    def test_print_current_logger(self):
+        print_logger("current Logger: ", logging.getLogger())
+
+    def test_print_current_root(self):
+        print_logger("current RootLogger:", logging.root)
+
+    def test_reset_to_python_root_logger_warning(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        assert logging.root.level == logging.WARNING
+        assert logging.root.manager.loggerClass is None
+        assert logging.root.manager.root.__class__ is logging.RootLogger
+        assert logging.root.name == "root"
+        # trust that pytest/PyCharm provides good default handlers
+        assert logging_tree.printout() is None
+
+    def test_reset_to_python_root_logger_manager_class(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        assert logging.root.manager.loggerClass is None
+
+    def test_reset_to_python_root_logger_manager_root(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        assert logging.root.manager.root.__class__ is logging.RootLogger
+
+    def test_reset_to_python_root_logger_name(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        assert logging.root.name == "root"
+
+    def test_display_reset_around_root_logger_printout(
+        self,
+        display_reset_root_logger_to_python__fixture_func,
+    ):
+        # trust that pytest/PyCharm provides good default handlers
+        assert logging_tree.printout() is None
+
+    def test_around_root(
+        self,
+        display_reset_root_logger_to_python__fixture_func,
+
+    ):
         """Ensure that a fresh root library is truly empty"""
-        print(logging_tree.printout())
-        print_logger("init_root", logging.RootLogger)
+        # Why would a root logger NOT have a level?
         assert logging.root.level == logging.WARNING
         assert logging.root.manager.loggerClass is None
         assert logging.root.manager.root.__class__ is logging.RootLogger
@@ -314,145 +272,152 @@ class TestLogBasic:
 
     def test_surround(
         self,
-        log_class_root_virgin,
-        root_logger_attributes_before_after__fixture_func
+        display_attributes_around_python_root_logger__fixture_func
     ):
-        root_logger_attributes_before_after__fixture_func
+        pass
 
-    def test_current_root_details(self, log_class_root_virgin):
+    def test_current_root_details(
+        self,
+        display_reset_root_logger_to_python__fixture_func
+    ):
         print_logger("root (before)", logging.Logger.root)
 
     def test_current_logger_details(self):
         print_logger("current", logging.Logger)
 
-    def test_log_level_set(self, UNTESTED_log_class_original__fixture_func):
+    def test_log_level_set_sliding_scale(self):
         """Understand All This Before Log UUT"""
-        test_log = UNTESTED_log_class_original__fixture_func
+        # Pelican assumes default WARNING from virgin rootLogger here
+        # Python logging assumes default WARNING from virgin rootLogger here
+        assert logging.root.level == logging.WARNING
+        test_log = logging.getLogger()
         # Newly created LogLogger class should be NOTSET yet operate at WARNING
-        assert logging.NOTSET == test_log.level
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.level == logging.WARNING
+        assert test_log.getEffectiveLevel() == logging.WARNING
         assert test_log.isEnabledFor(logging.WARNING)
 
         test_log.setLevel(logging.NOTSET)
-        assert logging.NOTSET == test_log.level
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.level == logging.NOTSET
+        assert test_log.getEffectiveLevel() == logging.NOTSET
         assert test_log.isEnabledFor(logging.WARNING)
 
         test_log.setLevel(logging.DEBUG)
         assert test_log.level == logging.DEBUG
-        assert logging.DEBUG == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.DEBUG
         assert test_log.isEnabledFor(logging.DEBUG)
 
         test_log.setLevel(logging.INFO)
         assert test_log.level == logging.INFO
-        assert logging.INFO == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.INFO
         assert test_log.isEnabledFor(logging.INFO)
 
         test_log.setLevel(logging.WARNING)
         assert test_log.level == logging.WARNING
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.WARNING
         assert test_log.isEnabledFor(logging.WARNING)
 
         not test_log.setLevel(logging.ERROR)
         assert test_log.level == logging.ERROR
-        assert logging.ERROR == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.ERROR
         assert test_log.isEnabledFor(logging.ERROR)
 
         test_log.setLevel(logging.CRITICAL)
         assert test_log.level == logging.CRITICAL
-        assert logging.CRITICAL == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.CRITICAL
         assert test_log.isEnabledFor(logging.CRITICAL)
 
         test_log.setLevel(level=logging.NOTSET)
         assert test_log.level == logging.NOTSET
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.NOTSET
         assert test_log.isEnabledFor(logging.WARNING)
 
         test_log.setLevel(level=1)
         assert test_log.level == 1
-        assert 1 == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == 1
         assert test_log.isEnabledFor(1)
 
         test_log.setLevel(logging.NOTSET)
-        assert logging.WARNING == test_log.getEffectiveLevel()
-        assert logging.NOTSET == test_log.level
+        assert test_log.getEffectiveLevel() == logging.NOTSET
+        assert test_log.level == logging.NOTSET
         assert test_log.isEnabledFor(logging.WARNING)
 
     def test_log_level_basic_config(
-        self, UNTESTED_instantiate_logger_class_original__fixture_func
+        self, reset_root_logger_to_python__fixture_func
     ):
-        test_log = UNTESTED_instantiate_logger_class_original__fixture_func
-        assert logging.WARNING == test_log.getEffectiveLevel()
-        assert logging.NOTSET == test_log.level
+        assert logging.root.level != logging.INFO
+        logging.basicConfig(level=logging.INFO, force=True)
+        assert logging.root.level == logging.INFO
 
-        logging.basicConfig(level=logging.INFO)
-        assert logging.WARNING == test_log.getEffectiveLevel()
-        assert test_log.level == logging.NOTSET
+        test_log = logging.getLogger()
+        assert test_log.getEffectiveLevel() == logging.INFO
+        assert test_log.level == logging.INFO
 
         logging.basicConfig(level=logging.INFO)
         test_log.setLevel(level=logging.DEBUG)
         assert test_log.level == logging.DEBUG
-        assert logging.DEBUG == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.DEBUG
 
         test_log.setLevel(level=logging.INFO)
         assert test_log.level == logging.INFO
-        assert logging.INFO == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.INFO
 
         test_log.setLevel(level=logging.WARNING)
         assert test_log.level == logging.WARNING
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.WARNING
 
         test_log.setLevel(level=logging.ERROR)
         assert test_log.level == logging.ERROR
-        assert logging.ERROR == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.ERROR
 
         test_log.setLevel(level=logging.CRITICAL)
         assert test_log.level == logging.CRITICAL
-        assert logging.CRITICAL == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.CRITICAL
 
         test_log.setLevel(level=logging.NOTSET)
         assert test_log.level == logging.NOTSET
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.NOTSET
 
         test_log.setLevel(level=1)
         assert test_log.level == 1
-        assert 1 == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == 1
 
         logging.info("info")
 
-    def test_log_level_set(self,
-                           UNTESTED_instantiate_logger_class_original__fixture_func):
-        test_log = UNTESTED_instantiate_logger_class_original__fixture_func
-        assert logging.WARNING == test_log.getEffectiveLevel()
-        assert logging.NOTSET == test_log.level
+    def test_log_level_set(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        test_log = logging.getLogger()
+        assert test_log.getEffectiveLevel() == logging.WARNING
+        assert test_log.level == logging.WARNING
 
         test_log.setLevel(logging.NOTSET)
-        assert logging.WARNING == test_log.getEffectiveLevel()
-        assert logging.NOTSET == test_log.level
+        assert test_log.getEffectiveLevel() == logging.NOTSET
+        assert test_log.level == logging.NOTSET
 
         test_log.setLevel(logging.DEBUG)
         assert test_log.level == logging.DEBUG
-        assert logging.DEBUG == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.DEBUG
 
         test_log.setLevel(logging.INFO)
         assert test_log.level == logging.INFO
-        assert logging.INFO == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.INFO
 
         test_log.setLevel(logging.WARNING)
         assert test_log.level == logging.WARNING
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.WARNING
 
         not test_log.setLevel(logging.ERROR)
         assert test_log.level == logging.ERROR
-        assert logging.ERROR == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.ERROR
 
         test_log.setLevel(logging.CRITICAL)
         assert test_log.level == logging.CRITICAL
-        assert logging.CRITICAL == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.CRITICAL
 
         test_log.setLevel(level=logging.NOTSET)
         assert test_log.level == logging.NOTSET
-        assert logging.WARNING == test_log.getEffectiveLevel()
+        assert test_log.getEffectiveLevel() == logging.NOTSET
 
         test_log.setLevel(level=1)
         assert test_log.level == 1

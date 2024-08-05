@@ -8,6 +8,7 @@ import inspect
 import locale
 import logging
 import os
+import pathlib
 import shutil
 import stat
 import sys
@@ -36,7 +37,9 @@ EXT_PYTHON_DISABLED = ".disabled"
 # DIRSPEC_: where all the test config files are stored
 # we hope that current working directory is always in pelican/pelican/tests
 DIRSPEC_CURRENT: str = os.getcwd()
-DIRSPEC_DATADIR: str = "settings" + os.sep
+# DIRSPEC_CURRENT: str = "." # os.getcwd()
+DIRSPEC_DATADIR: str = str(Path(Path(os.getcwd()) / "pelican/tests/settings" ).resolve(strict=False))
+os.path.normpath("settings" + os.sep)
 DIRSPEC_RELATIVE: str = DIRSPEC_DATADIR  # reuse 'tests/settings/' as scratch area
 
 # PC_ = Pelican Configuration or PELICANCONF or pelicanconf
@@ -92,7 +95,7 @@ BLOB_FILESPEC_SYNTAX_ERROR = Path(DIRSPEC_DATADIR) / str(
 # PATH_: the final path for unit tests here
 # FILESPEC_: the full path + filename + extension
 # REL_: relative path
-RO_FILESPEC_REL_VALID_PATH = Path(DIRSPEC_DATADIR) / PC_FULLNAME_VALID
+RO_FILESPEC_REL_VALID_PATH = Path(Path(DIRSPEC_DATADIR) / PC_FULLNAME_VALID).resolve()
 RO_FILESPEC_REL_SYNTAX_ERROR_PATH = Path(DIRSPEC_DATADIR) / PC_FULLNAME_SYNTAX_ERROR
 RO_FILESPEC_REL_NOTFOUND_PATH = Path(DIRSPEC_DATADIR) / PC_FULLNAME_NOTFOUND
 # FILESPEC_REL_UNREADABLE_PATH = Path(DIRSPEC_RELATIVE) / PC_FULLNAME_UNREADABLE
@@ -181,9 +184,48 @@ def fixture_module_get_tests_dir_abs_path():
 
     :return: Returns the Path of the tests directory
     :rtype: pathlib.Path"""
+
+    #  Get current working directory
+    cwd = pathlib.Path.cwd()
+    # Get this script directory location
+    this_script_path = pathlib.Path(os.path.dirname(__file__))
+    pelican_src_path = os.path.abspath(this_script_path / "..")
+    pkg_root_path = ""
+
+    # Magic Delta from Absolute into Relative
+
     abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
     yield Path(abs_tests_dirpath)
 
+
+@pytest.fixture(scope="module")
+def fixture_module_get_tests_dir_rel_path():
+    """Get the relative directory path of `tests` subdirectory
+
+    This pytest module-wide fixture will provide a full directory
+    path of this `test_settings_config.py`.
+
+    Note: used to assist in locating the `settings` directory underneath it.
+
+    This fixture gets evoked exactly once (file-wide) due to `scope=module`.
+
+    :return: Returns the Path of the tests directory
+    :rtype: pathlib.Path"""
+
+    #  Get current working directory
+    cwd = pathlib.Path.getcwd()
+    # Get this script directory location which should be "tests"
+    this_script_path = pathlib.Path(os.path.dirname(__file__))
+    # Go up to "pelican/"
+    pelican_src_path = os.path.abspath(this_script_path / "..")
+    # Go up to Git repo/package root directory
+    pelican_pkg_path = "."
+    pkg_root_path = ""
+
+    # Magic Delta from Absolute into Relative
+
+    abs_tests_dirpath: Path = Path(__file__).parent  # secret sauce
+    yield Path(abs_tests_dirpath)
 
 ##########################################################################
 #  module-specific (test_settings_modules.py) functions
@@ -262,7 +304,8 @@ class TestSettingsModuleName:
 
     @pytest.fixture(scope="class")
     def fixture_cls_get_settings_dir_rel_path(
-        self, fixture_module_get_tests_dir_abs_path
+        self,
+        fixture_module_get_tests_dir_rel_path
     ) -> Path:
         """Get the relative directory path of `tests/settings` subdirectory
 
@@ -276,8 +319,8 @@ class TestSettingsModuleName:
         :return: Returns the relative Path of the tests directory
         :rtype: pathlib.Path"""
         settings_dirpath: Path = (
-            fixture_module_get_tests_dir_abs_path / "settings"
-        )  # TODO work your relative magic here
+            fixture_module_get_tests_dir_rel_path / "settings"
+        )
         return settings_dirpath
 
     ##########################################################################
@@ -333,9 +376,7 @@ class TestSettingsModuleName:
         # TODO work your magic here for relative path
         self,
         fixture_session_locale,  # temporary directory could have internationalization
-        fixture_cls_get_settings_dir_abs_path,
-        # redundant to specify other dependencies of sub-fixtures here such as:
-        #   fixture_cls_get_settings_dir_abs_path
+        fixture_cls_get_settings_dir_rel_path,
     ):
         """Create a temporary directory, using a relative path
 
@@ -346,7 +387,7 @@ class TestSettingsModuleName:
         this via `scope=function`."""
         temporary_dir_path: Path = Path(
             tempfile.mkdtemp(
-                dir=fixture_cls_get_settings_dir_abs_path, suffix=TMP_DIRNAME_SUFFIX
+                dir=fixture_cls_get_settings_dir_rel_path, suffix=TMP_DIRNAME_SUFFIX
             )
         )
 

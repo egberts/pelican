@@ -142,6 +142,12 @@ def display_reset_root_logger_to_python__fixture_func(
 
 
 class TestLogFatalLogger:
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
     def test_logging_tree(self):
         print(logging_tree.printout())
 
@@ -183,6 +189,68 @@ class TestLogFatalLogger:
 
         # Assert
         assert_my_root_fatal_logger(new_pelican_logger_instance)
+
+    def test_disable_switch(
+        self,
+        capture_log
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        previous_disable_setting = logging.root.disabled
+        logging.root.disabled = True   # Turn off FatalLogger
+        with self._caplog.at_level(logging.DEBUG):
+            self._caplog.clear()
+
+            logging.critical("Nothing should not get logged")
+
+        assert len(self._caplog.messages) == 0
+
+        logging.root.disabled = previous_disable_setting
+
+
+class TestLogFataLoggerEarlyExit:
+    def test_errors_are_fatal(
+        self,
+        reset_root_logger_to_python__fixture_func
+    ):
+        logger_name = "test_log_fatal_logger"
+        logging.setLoggerClass(pelican.log.FatalLogger)
+        # force root logger to be of our preferred class
+        logging.getLogger().__class__ = pelican.log.FatalLogger
+
+        test_logger = logging.getLogger(logger_name)
+        pelican.log.init(
+            level=logging.ERROR,
+            name=logger_name,
+            fatal="warnings"
+        )
+        with pytest.raises(RuntimeError) as sample:
+            test_logger.error("this should cause an exception")
+
+        assert sample.type == RuntimeError
+
+
+class TestLogFatalDisabled:
+
+    @pytest.fixture(scope="function")
+    def capture_log(self, caplog):
+        """Save the console output by logger"""
+        self._caplog = caplog
+
+    def test_quiet_mode(
+        self,
+        capture_log
+    ):
+        assert logging.root.__class__ == pelican.log.FatalLogger
+        previous_disable_setting = logging.root.disabled
+        logging.root.disabled = True   # Turn off FatalLogger
+        with self._caplog.at_level(logging.DEBUG):
+            self._caplog.clear()
+
+            logging.critical("Nothing should not get logged")
+
+        assert len(self._caplog.messages) == 0
+
+        logging.root.disabled = previous_disable_setting
 
 
 if __name__ == '__main__':
