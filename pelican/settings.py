@@ -9,9 +9,10 @@ import sys
 from os.path import isabs
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from pelican.log import LimitFilter
+from pelican.paginator import PaginationRule
 
 
 def load_source(name: str, path: str) -> ModuleType:
@@ -24,7 +25,7 @@ def load_source(name: str, path: str) -> ModuleType:
 
 logger = logging.getLogger(__name__)
 
-Settings = Dict[str, Any]
+Settings = dict[str, Any]
 
 DEFAULT_THEME = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "themes", "notmyidea"
@@ -144,11 +145,12 @@ DEFAULT_CONFIG = {
     "DEFAULT_ORPHANS": 0,
     "DEFAULT_METADATA": {},
     "FILENAME_METADATA": r"(?P<date>\d{4}-\d{2}-\d{2}).*",
-    "PATH_METADATA": "",
+    "PATH_METADATA": r"",
     "EXTRA_PATH_METADATA": {},
     "ARTICLE_PERMALINK_STRUCTURE": "",
     "TYPOGRIFY": False,
     "TYPOGRIFY_IGNORE_TAGS": [],
+    "TYPOGRIFY_OMIT_FILTERS": [],
     "TYPOGRIFY_DASHES": "default",
     "SUMMARY_END_SUFFIX": "…",
     "SUMMARY_MAX_LENGTH": 50,
@@ -157,7 +159,7 @@ DEFAULT_CONFIG = {
     "PYGMENTS_RST_OPTIONS": {},
     "TEMPLATE_PAGES": {},
     "TEMPLATE_EXTENSIONS": [".html"],
-    "IGNORE_FILES": [".#*"],
+    "IGNORE_FILES": ["**/.*"],
     "SLUG_REGEX_SUBSTITUTIONS": [
         (r"[^\w\s-]", ""),  # remove non-alphabetical/whitespace/'-' chars
         (r"(?u)\A\s*", ""),  # strip leading whitespace
@@ -319,8 +321,7 @@ def handle_deprecated_settings(settings: Settings) -> Settings:
     # EXTRA_TEMPLATES_PATHS -> THEME_TEMPLATES_OVERRIDES
     if "EXTRA_TEMPLATES_PATHS" in settings:
         logger.warning(
-            "EXTRA_TEMPLATES_PATHS is deprecated use "
-            "THEME_TEMPLATES_OVERRIDES instead."
+            "EXTRA_TEMPLATES_PATHS is deprecated use THEME_TEMPLATES_OVERRIDES instead."
         )
         if settings.get("THEME_TEMPLATES_OVERRIDES"):
             raise Exception(
@@ -452,8 +453,7 @@ def handle_deprecated_settings(settings: Settings) -> Settings:
                 settings[key] = _printf_s_to_format_field(settings[key], "lang")
             except ValueError:
                 logger.warning(
-                    "Failed to convert %%s to {lang} for %s. "
-                    "Falling back to default.",
+                    "Failed to convert %%s to {lang} for %s. Falling back to default.",
                     key,
                 )
                 settings[key] = DEFAULT_CONFIG[key]
@@ -475,8 +475,7 @@ def handle_deprecated_settings(settings: Settings) -> Settings:
                 settings[key] = _printf_s_to_format_field(settings[key], "slug")
             except ValueError:
                 logger.warning(
-                    "Failed to convert %%s to {slug} for %s. "
-                    "Falling back to default.",
+                    "Failed to convert %%s to {slug} for %s. Falling back to default.",
                     key,
                 )
                 settings[key] = DEFAULT_CONFIG[key]
@@ -613,7 +612,7 @@ def configure_settings(settings: Settings) -> Settings:
     ]:
         if key in settings and not isinstance(settings[key], types):
             value = settings.pop(key)
-            logger.warn(
+            logger.warning(
                 "Detected misconfigured %s (%s), falling back to the default (%s)",
                 key,
                 value,
@@ -688,8 +687,6 @@ def configure_settings(settings: Settings) -> Settings:
         )
 
     # fix up pagination rules
-    from pelican.paginator import PaginationRule
-
     pagination_rules = [
         PaginationRule(*r)
         for r in settings.get(

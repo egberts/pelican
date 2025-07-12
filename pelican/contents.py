@@ -4,9 +4,8 @@ import locale
 import logging
 import os
 import re
-from datetime import timezone
 from html import unescape
-from typing import Any, Dict, Optional, Set, Tuple
+from typing import Any, Optional
 from urllib.parse import ParseResult, unquote, urljoin, urlparse, urlunparse
 
 try:
@@ -47,7 +46,7 @@ class Content:
     """
 
     default_template: Optional[str] = None
-    mandatory_properties: Tuple[str, ...] = ()
+    mandatory_properties: tuple[str, ...] = ()
 
     @deprecated_attribute(old="filename", new="source_path", since=(3, 2, 0))
     def filename():
@@ -56,10 +55,10 @@ class Content:
     def __init__(
         self,
         content: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         settings: Optional[Settings] = None,
         source_path: Optional[str] = None,
-        context: Optional[Dict[Any, Any]] = None,
+        context: Optional[dict[Any, Any]] = None,
     ):
         if metadata is None:
             metadata = {}
@@ -226,7 +225,7 @@ class Content:
         )
 
     @property
-    def url_format(self) -> Dict[str, Any]:
+    def url_format(self) -> dict[str, Any]:
         """Returns the URL, formatted with the proper values"""
         metadata = copy.copy(self.metadata)
         path = self.metadata.get("path", self.get_relative_source_path())
@@ -343,8 +342,7 @@ class Content:
                     value.geturl(),
                     extra={
                         "limit_msg": (
-                            "Other resources were not found "
-                            "and their urls not replaced"
+                            "Other resources were not found and their urls not replaced"
                         )
                     },
                 )
@@ -358,8 +356,9 @@ class Content:
             origin = joiner(siteurl, Author(path, self.settings).url)
         else:
             logger.warning(
-                "Replacement Indicator '%s' not recognized, skipping replacement",
+                "Replacement Indicator %r not recognized in %r, skipping replacement",
                 what,
+                origin,
             )
 
         # keep all other parts, such as query, fragment, etc.
@@ -396,7 +395,7 @@ class Content:
         hrefs = self._get_intrasite_link_regex()
         return hrefs.sub(lambda m: self._link_replacer(siteurl, m), content)
 
-    def get_static_links(self) -> Set[str]:
+    def get_static_links(self) -> set[str]:
         static_links = set()
         hrefs = self._get_intrasite_link_regex()
         for m in hrefs.finditer(self._content):
@@ -450,7 +449,7 @@ class Content:
             return content
 
         return truncate_html_words(
-            self.content,
+            content,
             self.settings["SUMMARY_MAX_LENGTH"],
             self.settings["SUMMARY_END_SUFFIX"],
         )
@@ -547,9 +546,29 @@ class Content:
                 self._summary = self.metadata["summary"]
 
 
+class SkipStub(Content):
+    """Stub class representing content that should not be processed in any way."""
+
+    def __init__(
+        self, content, metadata=None, settings=None, source_path=None, context=None
+    ):
+        self.source_path = source_path
+
+    def is_valid(self):
+        return False
+
+    @property
+    def content(self):
+        raise NotImplementedError("Stub content should not be read")
+
+    @property
+    def save_as(self):
+        raise NotImplementedError("Stub content cannot be saved")
+
+
 class Page(Content):
     mandatory_properties = ("title",)
-    allowed_statuses = ("published", "hidden", "draft")
+    allowed_statuses = ("published", "hidden", "draft", "skip")
     default_status = "published"
     default_template = "page"
 
@@ -560,7 +579,7 @@ class Page(Content):
 
 class Article(Content):
     mandatory_properties = ("title", "date", "category")
-    allowed_statuses = ("published", "hidden", "draft")
+    allowed_statuses = ("published", "hidden", "draft", "skip")
     default_status = "published"
     default_template = "article"
 
@@ -572,7 +591,7 @@ class Article(Content):
             if self.date.tzinfo is None:
                 now = datetime.datetime.now()
             else:
-                now = datetime.datetime.utcnow().replace(tzinfo=timezone.utc)
+                now = datetime.datetime.now(datetime.timezone.utc)
             if self.date > now:
                 self.status = "draft"
 

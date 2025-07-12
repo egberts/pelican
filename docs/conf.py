@@ -1,6 +1,7 @@
 import datetime
 import os
 import sys
+import time
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -19,6 +20,9 @@ with open("../pyproject.toml", "rb") as f:
 
 # -- General configuration ----------------------------------------------------
 templates_path = ["_templates"]
+locale_dirs = ["locale/"]
+gettext_compact = False
+gettext_uuid = True
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.extlinks",
@@ -27,15 +31,17 @@ extensions = [
 source_suffix = ".rst"
 master_doc = "index"
 project = project_data.get("name").upper()
-year = datetime.datetime.now().date().year
-copyright = f"2010–{year}"  # noqa: RUF001
+year = datetime.datetime.fromtimestamp(
+    int(os.environ.get("SOURCE_DATE_EPOCH", time.time())), datetime.timezone.utc
+).year
+project_copyright = f"2010–{year}"  # noqa: RUF001
 exclude_patterns = ["_build"]
 release = project_data.get("version")
 version = ".".join(release.split(".")[:1])
 last_stable = project_data.get("version")
 rst_prolog = f"""
 .. |last_stable| replace:: :pelican-doc:`{last_stable}`
-.. |min_python| replace:: {project_data.get('requires-python').split(",")[0]}
+.. |min_python| replace:: {project_data.get("requires-python").split(",")[0]}
 """
 
 extlinks = {"pelican-doc": ("https://docs.getpelican.com/en/latest/%s.html", "%s")}

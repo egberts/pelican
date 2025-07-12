@@ -7,14 +7,18 @@ from sys import platform
 
 from jinja2.utils import generate_lorem_ipsum
 
-from pelican.contents import Article, Author, Category, Page, Static
+from pelican.contents import Article, Author, Category, Page, Static, logger
 from pelican.plugins.signals import content_object_init
 from pelican.settings import DEFAULT_CONFIG
 from pelican.tests.support import LoggedTestCase, get_context, get_settings, unittest
 from pelican.utils import path_to_url, posixize_path, truncate_html_words
 
-# generate one paragraph, enclosed with <p>
-TEST_CONTENT = str(generate_lorem_ipsum(n=1))
+# generate 3 test paragraphs, each enclosed with <p>
+# save the first paragraph separately for testing the summary generation algorithm
+# NOTE: these values are nondeterministic between test runs
+TEST_CONTENT_FIRST_PARAGRAPH = str(generate_lorem_ipsum(n=1))
+TEST_CONTENT_REMAINING_PARAGRAPHS = str(generate_lorem_ipsum(n=2))
+TEST_CONTENT = TEST_CONTENT_FIRST_PARAGRAPH + TEST_CONTENT_REMAINING_PARAGRAPHS
 TEST_SUMMARY = generate_lorem_ipsum(n=1, html=False)
 
 
@@ -45,24 +49,18 @@ class TestBase(LoggedTestCase):
         self._enable_limit_filter()
 
     def _disable_limit_filter(self):
-        from pelican.contents import logger
-
         logger.disable_filter()
 
     def _enable_limit_filter(self):
-        from pelican.contents import logger
-
         logger.enable_filter()
 
     def _copy_page_kwargs(self):
-        # make a deep copy of page_kwargs
-        page_kwargs = {key: self.page_kwargs[key] for key in self.page_kwargs}
-        for key in page_kwargs:
-            if not isinstance(page_kwargs[key], dict):
+        # copy page_kwargs
+        page_kwargs = dict(self.page_kwargs)
+        for key, val in page_kwargs.items():
+            if not isinstance(val, dict):
                 break
-            page_kwargs[key] = {
-                subkey: page_kwargs[key][subkey] for subkey in page_kwargs[key]
-            }
+            page_kwargs[key] = {subkey: val[subkey] for subkey in val}
 
         return page_kwargs
 
@@ -126,7 +124,7 @@ class TestPage(TestBase):
         settings["SUMMARY_MAX_PARAGRAPHS"] = 1
         settings["SUMMARY_MAX_LENGTH"] = None
         page = Page(**page_kwargs)
-        self.assertEqual(page.summary, TEST_CONTENT)
+        self.assertEqual(page.summary, TEST_CONTENT_FIRST_PARAGRAPH)
 
     def test_summary_paragraph_max_length(self):
         # If both SUMMARY_MAX_PARAGRAPHS and SUMMARY_MAX_LENGTH are set,
@@ -139,7 +137,25 @@ class TestPage(TestBase):
         settings["SUMMARY_MAX_PARAGRAPHS"] = 1
         settings["SUMMARY_MAX_LENGTH"] = 10
         page = Page(**page_kwargs)
-        self.assertEqual(page.summary, truncate_html_words(TEST_CONTENT, 10))
+        self.assertEqual(
+            page.summary, truncate_html_words(TEST_CONTENT_FIRST_PARAGRAPH, 10)
+        )
+
+    def test_summary_paragraph_long_max_length(self):
+        # If both SUMMARY_MAX_PARAGRAPHS and SUMMARY_MAX_LENGTH are set,
+        # and the first SUMMARY_MAX_PARAGRAPHS paragraphs have fewer words
+        # than SUMMARY_MAX_LENGTH, the generated summary should still only
+        # contain the given number of paragraphs.
+        page_kwargs = self._copy_page_kwargs()
+        settings = get_settings()
+        page_kwargs["settings"] = settings
+        del page_kwargs["metadata"]["summary"]
+        settings["SUMMARY_MAX_PARAGRAPHS"] = 1
+        settings["SUMMARY_MAX_LENGTH"] = 50
+        page = Page(**page_kwargs)
+        self.assertEqual(
+            page.summary, truncate_html_words(TEST_CONTENT_FIRST_PARAGRAPH, 50)
+        )
 
     def test_summary_end_suffix(self):
         # If a :SUMMARY_END_SUFFIX: is set, and there is no other summary,
@@ -288,18 +304,16 @@ class TestPage(TestBase):
 
         # I doubt this can work on all platforms ...
         if platform == "win32":
-            locale = "jpn"
+            the_locale = "jpn"
         else:
-            locale = "ja_JP.utf8"
-        page_kwargs["settings"]["DATE_FORMATS"] = {"jp": (locale, "%Y-%m-%d(%a)")}
+            the_locale = "ja_JP.utf8"
+        page_kwargs["settings"]["DATE_FORMATS"] = {"jp": (the_locale, "%Y-%m-%d(%a)")}
         page_kwargs["metadata"]["lang"] = "jp"
-
-        import locale as locale_module
 
         try:
             page = Page(**page_kwargs)
             self.assertEqual(page.locale_date, "2015-09-13(\u65e5)")
-        except locale_module.Error:
+        except locale.Error:
             # The constructor of ``Page`` will try to set the locale to
             # ``ja_JP.utf8``. But this attempt will failed when there is no
             # such locale in the system. You can see which locales there are
@@ -307,7 +321,7 @@ class TestPage(TestBase):
             #
             # Until we find some other method to test this functionality, we
             # will simply skip this test.
-            unittest.skip(f"There is no locale {locale} in this system.")
+            unittest.skip(f"There is no locale {the_locale} in this system.")
 
     def test_template(self):
         # Pages default to page, metadata overwrites
@@ -384,8 +398,7 @@ class TestPage(TestBase):
 
         # fragment
         args["content"] = (
-            "A simple test, with a "
-            '<a href="|filename|article.rst#section-2">link</a>'
+            'A simple test, with a <a href="|filename|article.rst#section-2">link</a>'
         )
         content = Page(**args).get_content("http://notmyidea.org")
         self.assertEqual(
@@ -665,8 +678,7 @@ class TestPage(TestBase):
         }
 
         args["content"] = (
-            "A simple test, with a link to a"
-            '<a href="{filename}poster.jpg">poster</a>'
+            'A simple test, with a link to a<a href="{filename}poster.jpg">poster</a>'
         )
         content = Page(**args).get_content("http://notmyidea.org")
         self.assertEqual(
@@ -1036,7 +1048,7 @@ class TestStatic(LoggedTestCase):
         self.assertEqual(content, html)
         self.assertLogCountEqual(
             count=1,
-            msg="Replacement Indicator 'unknown' not recognized, "
+            msg="Replacement Indicator 'unknown' not recognized in '{unknown}foo', "
             "skipping replacement",
             level=logging.WARNING,
         )

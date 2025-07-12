@@ -10,8 +10,9 @@ import re
 import shutil
 import sys
 import traceback
+import unicodedata
 import urllib
-from collections.abc import Hashable
+from collections.abc import Collection, Generator, Hashable, Iterable, Sequence
 from contextlib import contextmanager
 from functools import partial
 from html import entities
@@ -22,13 +23,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Collection,
-    Generator,
-    Iterable,
-    Sequence,
 )
 
 import dateutil.parser
+import unidecode
 from watchfiles import Change
 
 try:
@@ -133,8 +131,9 @@ class DateFormatter:
     def __call__(self, date: datetime.datetime, date_format: str) -> str:
         # on OSX, encoding from LC_CTYPE determines the unicode output in PY3
         # make sure it's same as LC_TIME
-        with temporary_locale(self.locale, locale.LC_TIME), temporary_locale(
-            self.locale, locale.LC_CTYPE
+        with (
+            temporary_locale(self.locale, locale.LC_TIME),
+            temporary_locale(self.locale, locale.LC_CTYPE),
         ):
             formatted = strftime(date, date_format)
 
@@ -262,10 +261,6 @@ def slugify(
     For a set of sensible default regex substitutions to pass to regex_subs
     look into pelican.settings.DEFAULT_CONFIG['SLUG_REGEX_SUBSTITUTIONS'].
     """
-
-    import unicodedata
-
-    import unidecode
 
     def normalize_unicode(text: str) -> str:
         # normalize text by compatibility composition
@@ -799,8 +794,7 @@ def order_content(
                                 content.get_relative_source_path(),
                                 extra={
                                     "limit_msg": (
-                                        "More files are missing "
-                                        "the needed attribute."
+                                        "More files are missing the needed attribute."
                                     )
                                 },
                             )
@@ -814,15 +808,30 @@ def order_content(
     return content_list
 
 
+class FileChangeFilter(watchfiles.DefaultFilter):
+    def __init__(self, ignore_file_patterns: Sequence[str], *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ignore_file_patterns = ignore_file_patterns
+
+    def __call__(self, change: watchfiles.Change, path: str) -> bool:
+        """Returns `True` if a file should be watched for changes. The `IGNORE_FILES`
+        setting is a list of Unix glob patterns. This call will filter out files and
+        directories specified by `IGNORE_FILES` Pelican setting and by the default
+        filters of `watchfiles.DefaultFilter`, seen here:
+        https://watchfiles.helpmanual.io/api/filters/#watchfiles.DefaultFilter.ignore_dirs
+        """
+        return super().__call__(change, path) and not any(
+            fnmatch.fnmatch(os.path.abspath(path), p) for p in self.ignore_file_patterns
+        )
+
+
 def wait_for_changes(
     settings_file: str,
     settings: Settings,
 ) -> set[tuple[Change, str]]:
     content_path = settings.get("PATH", "")
     theme_path = settings.get("THEME", "")
-    ignore_files = {
-        fnmatch.translate(pattern) for pattern in settings.get("IGNORE_FILES", [])
-    }
+    ignore_file_patterns = set(settings.get("IGNORE_FILES", []))
 
     candidate_paths = [
         settings_file,
@@ -847,7 +856,7 @@ def wait_for_changes(
     return next(
         watchfiles.watch(
             *watching_paths,
-            watch_filter=watchfiles.DefaultFilter(ignore_entity_patterns=ignore_files),  # type: ignore
+            watch_filter=FileChangeFilter(ignore_file_patterns=ignore_file_patterns),
             rust_timeout=0,
         )
     )

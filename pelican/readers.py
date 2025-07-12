@@ -15,7 +15,7 @@ from docutils.writers.html4css1 import HTMLTranslator, Writer
 
 from pelican import rstdirectives  # NOQA
 from pelican.cache import FileStampDataCacher
-from pelican.contents import Author, Category, Page, Tag
+from pelican.contents import Author, Category, Page, SkipStub, Tag
 from pelican.plugins import signals
 from pelican.utils import file_suffix, get_date, pelican_open, posixize_path
 
@@ -630,8 +630,9 @@ class Readers(FileStampDataCacher):
 
         # eventually filter the content with typogrify if asked so
         if self.settings["TYPOGRIFY"]:
-            import smartypants
-            from typogrify.filters import typogrify
+            # typogrify is an optional feature, user may not have it installed
+            import smartypants  # noqa: PLC0415
+            from typogrify.filters import typogrify  # noqa: PLC0415
 
             typogrify_dashes = self.settings["TYPOGRIFY_DASHES"]
             if typogrify_dashes == "oldschool":
@@ -648,11 +649,22 @@ class Readers(FileStampDataCacher):
             smartypants.Attr.default |= smartypants.Attr.w
 
             def typogrify_wrapper(text):
-                """Ensures ignore_tags feature is backward compatible"""
+                """Ensure compatibility with older versions of Typogrify.
+
+                The 'TYPOGRIFY_IGNORE_TAGS' and/or 'TYPOGRIFY_OMIT_FILTERS'
+                settings will be ignored if the installed version of Typogrify
+                doesn't have the corresponding features."""
                 try:
-                    return typogrify(text, self.settings["TYPOGRIFY_IGNORE_TAGS"])
+                    return typogrify(
+                        text,
+                        self.settings["TYPOGRIFY_IGNORE_TAGS"],
+                        **dict.fromkeys(self.settings["TYPOGRIFY_OMIT_FILTERS"], False),
+                    )
                 except TypeError:
-                    return typogrify(text)
+                    try:
+                        typogrify(text, self.settings["TYPOGRIFY_IGNORE_TAGS"])
+                    except TypeError:
+                        return typogrify(text)
 
             if content:
                 content = typogrify_wrapper(content)
@@ -668,6 +680,9 @@ class Readers(FileStampDataCacher):
                 "Signal %s.send(%s, <metadata>)", context_signal.name, context_sender
             )
             context_signal.send(context_sender, metadata=metadata)
+
+        if metadata.get("status") == "skip":
+            content_class = SkipStub
 
         return content_class(
             content=content,

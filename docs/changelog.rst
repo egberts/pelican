@@ -1,6 +1,42 @@
 Release history
 ###############
 
+4.11.0 - 2025-01-15
+===================
+
+- Add setting to selectively omit Typogrify filters `(#3439) <https://github.com/getpelican/pelican/pull/3439>`_
+- Add more blocks to the Simple theme’s base template, making it easier to create new themes by inheriting from the Simple theme `(#3405) <https://github.com/getpelican/pelican/pull/3405>`_
+- Fix auto-reload behavior upon changes to the theme, content or settings. Make default ``IGNORE_FILES`` recursively ignore all hidden files as well as the `default filters <https://watchfiles.helpmanual.io/api/filters/#watchfiles.DefaultFilter.ignore_dirs>`_ from ``watchfiles.DefaultFilter``. `(#3441) <https://github.com/getpelican/pelican/pull/3441>`_
+- Get current year from the ``SOURCE_DATE_EPOCH`` environment variable, if available `(#3430) <https://github.com/getpelican/pelican/pull/3430>`_
+- Add Python 3.13 to test matrix and remove Python 3.8 `(#3435) <https://github.com/getpelican/pelican/pull/3435>`_
+- Require Typogrify 2.1+ and Pygments <2.19
+
+4.10.2 - 2024-11-27
+===================
+
+- Change ``IGNORE_FILES`` setting default to ignore all hidden files
+- Fix ``SUMMARY_MAX_PARAGRAPHS`` not being respected in some combinations with ``SUMMARY_MAX_LENGTH``
+
+4.10.1 - 2024-09-28
+===================
+
+- Fix error when running ``pelican -r -l``
+- Fix symlink handling in ``pelican-themes``
+
+4.10.0 - 2024-09-16
+===================
+
+- Add setting to specify summary via paragraph count
+- Add new status to skip generation of a post
+- Add setting to append ``ref`` parameter to links in feeds
+- Configure logging handler via ``--log-handler`` CLI option
+- Resolve intra-site links in summaries
+- Warn when files are not processed due to disabled readers
+- Add Medium post importer
+- Improve GitHub Pages workflow
+- Improve code test coverage
+- Translate documentation into Simplified Chinese
+
 4.9.1 - 2023-11-15
 ==================
 
